@@ -274,7 +274,9 @@ fn test() {
             }",
     ];
 
-    let _fix = [
+    // TODO: add fixer
+    #[expect(clippy::useless_vec)]
+    let _fix = vec![
         (
             "switch(foo) {
                 case 1: {
