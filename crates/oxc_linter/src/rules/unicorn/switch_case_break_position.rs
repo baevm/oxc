@@ -57,7 +57,8 @@ impl Rule for SwitchCaseBreakPosition {
 
         let consequent = &switch_case.consequent;
 
-        let [Statement::BlockStatement(block_statement), last_statement] = consequent.as_slice() else {
+        let [Statement::BlockStatement(block_statement), last_statement] = consequent.as_slice()
+        else {
             return;
         };
 
@@ -273,7 +274,8 @@ fn test() {
             }",
     ];
 
-    let _fix = [(
+    let _fix = [
+        (
             "switch(foo) {
                 case 1: {
                     doStuff(); // Keep this comment with the statement
@@ -330,7 +332,8 @@ fn test() {
                     break;
                 }
             }",
-        )];
+        ),
+    ];
 
     Tester::new(SwitchCaseBreakPosition::NAME, SwitchCaseBreakPosition::PLUGIN, pass, fail)
         .test_and_snapshot();
