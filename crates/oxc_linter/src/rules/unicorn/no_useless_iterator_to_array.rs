@@ -153,9 +153,8 @@ fn to_array_span(expr: &Expression) -> Option<Span> {
         return None;
     };
 
-    let Some(callee_member_expr) = call_expr.callee.get_member_expr() else {
-        return None;
-    };
+    let callee_member_expr = call_expr.callee.get_member_expr()?;
+
     if call_expr.optional || callee_member_expr.optional() || callee_member_expr.is_computed() {
         return None;
     }
@@ -167,28 +166,30 @@ fn to_array_span(expr: &Expression) -> Option<Span> {
     callee_member_expr.static_property_info().map(|(span, _)| span)
 }
 
+const TYPED_ARRAYS: &[&str] = &[
+    "Int8Array",
+    "Uint8Array",
+    "Uint8ClampedArray",
+    "Int16Array",
+    "Uint16Array",
+    "Int32Array",
+    "Uint32Array",
+    "Float16Array",
+    "Float32Array",
+    "Float64Array",
+    "BigInt64Array",
+    "BigUint64Array",
+];
+
+fn is_array_or_typed_array_from_call(call_expr: &CallExpression) -> bool {
+    is_method_call(call_expr, Some(&["Array"]), Some(&["from"]), Some(1), None)
+        || is_method_call(call_expr, Some(TYPED_ARRAYS), Some(&["from"]), Some(1), None)
+}
+
 // Case 1: `new Set(iterator.toArray())`, `new Map(iterator.toArray())`, etc.
 fn check_new_expr(new_expr: &NewExpression, ctx: &LintContext) {
     if !is_new_expression(new_expr, &["Map", "WeakMap", "Set", "WeakSet"], Some(1), Some(1))
-        && !is_new_expression(
-            new_expr,
-            &[
-                "Int8Array",
-                "Uint8Array",
-                "Uint8ClampedArray",
-                "Int16Array",
-                "Uint16Array",
-                "Int32Array",
-                "Uint32Array",
-                "Float16Array",
-                "Float32Array",
-                "Float64Array",
-                "BigInt64Array",
-                "BigUint64Array",
-            ],
-            Some(1),
-            None,
-        )
+        && !is_new_expression(new_expr, TYPED_ARRAYS, Some(1), None)
     {
         return;
     }
@@ -216,27 +217,8 @@ fn check_new_expr(new_expr: &NewExpression, ctx: &LintContext) {
 // Case 2: Call expressions — static methods and iterator prototype methods.
 fn check_call_expr(call_expr: &CallExpression, ctx: &LintContext) {
     // Case 2a: `Array.from(iterator.toArray())`, `TypedArray.from(…)`, `Object.fromEntries(…)`
-    if is_method_call(
-        call_expr,
-        Some(&[
-            "Array",
-            "Int8Array",
-            "Uint8Array",
-            "Uint8ClampedArray",
-            "Int16Array",
-            "Uint16Array",
-            "Int32Array",
-            "Uint32Array",
-            "Float16Array",
-            "Float32Array",
-            "Float64Array",
-            "BigInt64Array",
-            "BigUint64Array",
-        ]),
-        Some(&["from"]),
-        Some(1),
-        None,
-    ) || is_method_call(call_expr, Some(&["Object"]), Some(&["fromEntries"]), Some(1), None)
+    if is_array_or_typed_array_from_call(call_expr)
+        || is_method_call(call_expr, Some(&["Object"]), Some(&["fromEntries"]), Some(1), None)
     {
         let Some(callee_member_expr) = call_expr.callee.get_member_expr() else {
             return;
@@ -313,13 +295,8 @@ fn check_call_expr(call_expr: &CallExpression, ctx: &LintContext) {
     }
 
     // Case 2c: `iterator.toArray().every(fn)`, `.find(fn)`, `.forEach(fn)`, `.some(fn)`, `.reduce(fn, init)`
-    if is_method_call(
-        call_expr,
-        None,
-        Some(&["every", "find", "forEach", "some"]),
-        Some(1),
-        Some(1),
-    ) || is_method_call(call_expr, None, Some(&["reduce"]), Some(2), Some(2))
+    if is_method_call(call_expr, None, Some(&["every", "find", "forEach", "some"]), None, Some(1))
+        || is_method_call(call_expr, None, Some(&["reduce"]), Some(2), Some(2))
     {
         let Some(callee_member_expr) = call_expr.callee.get_member_expr() else {
             return;
