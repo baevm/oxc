@@ -93,13 +93,12 @@ impl Rule for PreferSetSize {
 
 fn get_set_node<'a>(expression: &'a Expression<'a>) -> Option<(Span, &'a Expression<'a>)> {
     // `[...set].length`
-    if let Expression::ArrayExpression(array_expr) = expression {
-        if array_expr.elements.len() == 1
+    if let Expression::ArrayExpression(array_expr) = expression
+        && array_expr.elements.len() == 1
             && let ArrayExpressionElement::SpreadElement(spread_element) = &array_expr.elements[0]
         {
             return Some((array_expr.span, &spread_element.argument));
         }
-    }
 
     // `Array.from(set).length`
     if let Expression::CallExpression(call_expr) = expression
