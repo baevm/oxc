@@ -95,10 +95,10 @@ fn get_set_node<'a>(expression: &'a Expression<'a>) -> Option<(Span, &'a Express
     // `[...set].length`
     if let Expression::ArrayExpression(array_expr) = expression
         && array_expr.elements.len() == 1
-            && let ArrayExpressionElement::SpreadElement(spread_element) = &array_expr.elements[0]
-        {
-            return Some((array_expr.span, &spread_element.argument));
-        }
+        && let ArrayExpressionElement::SpreadElement(spread_element) = &array_expr.elements[0]
+    {
+        return Some((array_expr.span, &spread_element.argument));
+    }
 
     // `Array.from(set).length`
     if let Expression::CallExpression(call_expr) = expression
