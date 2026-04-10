@@ -1,0 +1,52 @@
+---
+source: crates/oxc_linter/src/tester.rs
+---
+
+  ⚠ eslint-plugin-node(no-callback-literal): Unexpected literal in error position of callback.
+   ╭─[no_callback_literal.tsx:1:1]
+ 1 │ callback(false, "snork")
+   · ────────────────────────
+   ╰────
+  help: Pass an `Error` object (or `null`/`undefined` when there is no error) as the first callback argument.
+
+  ⚠ eslint-plugin-node(no-callback-literal): Unexpected literal in error position of callback.
+   ╭─[no_callback_literal.tsx:1:1]
+ 1 │ callback("help")
+   · ────────────────
+   ╰────
+  help: Pass an `Error` object (or `null`/`undefined` when there is no error) as the first callback argument.
+
+  ⚠ eslint-plugin-node(no-callback-literal): Unexpected literal in error position of callback.
+   ╭─[no_callback_literal.tsx:1:1]
+ 1 │ callback("help", data)
+   · ──────────────────────
+   ╰────
+  help: Pass an `Error` object (or `null`/`undefined` when there is no error) as the first callback argument.
+
+  ⚠ eslint-plugin-node(no-callback-literal): Unexpected literal in error position of callback.
+   ╭─[no_callback_literal.tsx:1:1]
+ 1 │ cb(false)
+   · ─────────
+   ╰────
+  help: Pass an `Error` object (or `null`/`undefined` when there is no error) as the first callback argument.
+
+  ⚠ eslint-plugin-node(no-callback-literal): Unexpected literal in error position of callback.
+   ╭─[no_callback_literal.tsx:1:1]
+ 1 │ cb("help")
+   · ──────────
+   ╰────
+  help: Pass an `Error` object (or `null`/`undefined` when there is no error) as the first callback argument.
+
+  ⚠ eslint-plugin-node(no-callback-literal): Unexpected literal in error position of callback.
+   ╭─[no_callback_literal.tsx:1:1]
+ 1 │ cb("help", data)
+   · ────────────────
+   ╰────
+  help: Pass an `Error` object (or `null`/`undefined` when there is no error) as the first callback argument.
+
+  ⚠ eslint-plugin-node(no-callback-literal): Unexpected literal in error position of callback.
+   ╭─[no_callback_literal.tsx:1:1]
+ 1 │ callback((a, 1), data)
+   · ──────────────────────
+   ╰────
+  help: Pass an `Error` object (or `null`/`undefined` when there is no error) as the first callback argument.
