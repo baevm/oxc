@@ -29,7 +29,6 @@ declare_oxc_lint!(
     /// Examples of **incorrect** code for this rule:
     /// ```js
     /// cb('this is an error string');
-    /// cb({ a: 1 });
     /// callback(0);
     /// ```
     ///
@@ -71,7 +70,7 @@ impl Rule for NoCallbackLiteral {
             return;
         }
 
-        ctx.diagnostic(no_callback_literal_diagnostic(node.span()));
+        ctx.diagnostic(no_callback_literal_diagnostic(error_expr.span()));
     }
 }
 
@@ -135,6 +134,8 @@ fn test() {
         r#"cb(null, "super")"#,
         "cb(e as Error)",           // { "parser": tsParser }
         r#"cb("help" as unknown)"#, // { "parser": tsParser }
+        "cb({ a: 1 })",
+        "cb([])",
     ];
 
     let fail = vec![
