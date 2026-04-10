@@ -75,7 +75,7 @@ impl Rule for NoCallbackLiteral {
     }
 }
 
-/// Determine if a node has a possiblity to be an Error object
+/// Determine if a node has a possibility to be an Error object
 fn could_be_error(error_expr: &Expression) -> bool {
     match error_expr.without_parentheses() {
         Expression::BooleanLiteral(_)
