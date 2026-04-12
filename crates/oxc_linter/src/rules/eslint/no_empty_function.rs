@@ -327,7 +327,7 @@ impl Rule for NoEmptyFunction {
             |fixer| {
                 fixer
                     .replace(Span::new(fb.span.start + 1, fb.span.end - 1), " /* empty */ ")
-                    .with_message(format!("Add comment inside empty {kind}"))
+                    .with_message(format!("Add comment inside empty {kind}."))
             },
         );
     }
