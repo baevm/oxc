@@ -12,9 +12,10 @@ use oxc_linter::{
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-use crate::{
-    DEFAULT_JSONC_OXLINTRC_NAME, DEFAULT_OXLINTRC_NAME, DEFAULT_TS_OXLINTRC_NAME, VITE_CONFIG_NAME,
-};
+use crate::{DEFAULT_JSONC_OXLINTRC_NAME, DEFAULT_OXLINTRC_NAME, DEFAULT_TS_OXLINTRC_NAME};
+
+#[cfg(feature = "napi")]
+use crate::{VITE_CONFIG_NAME, is_vite_plus_mode};
 
 const NODE_MODULES_DIR: &str = "node_modules";
 
@@ -506,9 +507,21 @@ impl<'a> ConfigLoader<'a> {
 
     /// Try to load config from a specific directory.
     ///
-    /// Checks for both `.oxlintrc.json` and `oxlint.config.ts` files in the given directory.
+    /// In Vite+ mode (`VP_VERSION` set): only checks for `vite.config.ts`.
+    /// Otherwise: checks for `.oxlintrc.json`, `.oxlintrc.jsonc`, and `oxlint.config.ts`.
+    ///
     /// Returns `Ok(Some(config))` if found, `Ok(None)` if not found, or `Err` on error.
     fn try_load_config_from_dir(&self, dir: &Path) -> Result<Option<Oxlintrc>, OxcDiagnostic> {
+        // Vite+ mode: only vite.config.ts is a candidate
+        #[cfg(feature = "napi")]
+        if is_vite_plus_mode() {
+            let vite_config_path = dir.join(VITE_CONFIG_NAME);
+            if vite_config_path.is_file() {
+                return self.load_root_js_config(&vite_config_path);
+            }
+            return Ok(None);
+        }
+
         let json_path = dir.join(DEFAULT_OXLINTRC_NAME);
         let jsonc_path = dir.join(DEFAULT_JSONC_OXLINTRC_NAME);
         let ts_path = dir.join(DEFAULT_TS_OXLINTRC_NAME);
@@ -536,13 +549,6 @@ impl<'a> ConfigLoader<'a> {
         }
         if jsonc_exists {
             return Oxlintrc::from_file(&jsonc_path).map(Some);
-        }
-
-        // Fallback: check for vite.config.ts with .lint field (lowest priority)
-        // If .lint field is missing, `load_root_js_config` returns `Ok(None)` to skip.
-        let vite_config_path = dir.join(VITE_CONFIG_NAME);
-        if vite_config_path.is_file() {
-            return self.load_root_js_config(&vite_config_path);
         }
 
         Ok(None)

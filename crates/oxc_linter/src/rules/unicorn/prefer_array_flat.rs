@@ -63,7 +63,8 @@ declare_oxc_lint!(
     PreferArrayFlat,
     unicorn,
     pedantic,
-    conditional_dangerous_fix
+    conditional_dangerous_fix,
+    version = "0.0.20",
 );
 
 impl Rule for PreferArrayFlat {

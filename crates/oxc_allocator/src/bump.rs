@@ -4,28 +4,27 @@
 //! (2 commits after 3.20.2 release). Changes have been made since.
 
 #![expect(clippy::inline_always, clippy::undocumented_unsafe_blocks)]
-#![deny(missing_debug_implementations)]
-#![deny(missing_docs)]
 
-#[doc(hidden)]
-pub extern crate alloc as core_alloc;
-
-use crate::bumpalo_alloc;
-
-use core::cell::Cell;
-use core::cmp::Ordering;
-use core::fmt::Display;
-use core::iter;
-use core::marker::PhantomData;
-use core::mem;
-use core::ptr::{self, NonNull};
-use core::slice;
-use core::str;
-use core_alloc::alloc::{Layout, alloc, dealloc};
+use std::{
+    alloc::{Layout, alloc, dealloc},
+    cell::Cell,
+    cmp::Ordering,
+    fmt::{self, Display},
+    hint::unreachable_unchecked,
+    iter,
+    marker::PhantomData,
+    mem,
+    ptr::{self, NonNull},
+    slice, str,
+};
 
 use allocator_api2::alloc::{AllocError, Allocator};
 
-pub use bumpalo_alloc::AllocErr;
+use crate::bumpalo_alloc::Alloc as BumpaloAlloc;
+pub use crate::bumpalo_alloc::AllocErr;
+
+#[cfg(all(feature = "track_allocations", not(feature = "disable_track_allocations")))]
+use crate::tracking::AllocationStats;
 
 /// An error returned from [`Bump::try_alloc_try_with`].
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -45,7 +44,7 @@ impl<E> From<AllocErr> for AllocOrInitError<E> {
     }
 }
 impl<E: Display> Display for AllocOrInitError<E> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AllocOrInitError::Alloc(err) => err.fmt(f),
             AllocOrInitError::Init(err) => write!(f, "initialization failed: {err}"),
@@ -55,7 +54,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 
 /// An arena to bump allocate into.
 ///
-/// ## No `Drop`s
+/// # No `Drop`s
 ///
 /// Objects that are bump-allocated will never have their [`Drop`] implementation
 /// called &mdash; unless you do it manually yourself. This makes it relatively
@@ -99,7 +98,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// [`bumpalo::boxed::Box::new_in`]: boxed/struct.Box.html#method.new_in
 /// [`std::boxed::Box`]: https://doc.rust-lang.org/std/boxed/struct.Box.html
 ///
-/// ## Example
+/// # Example
 ///
 /// ```
 /// # use oxc_allocator::bump::Bump;
@@ -116,7 +115,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// *s = "the bump allocator; and also is a buffalo";
 /// ```
 ///
-/// ## Allocation Methods Come in Many Flavors
+/// # Allocation Methods Come in Many Flavors
 ///
 /// There are various allocation methods on `Bump`, the simplest being
 /// [`alloc`][Bump::alloc]. The others exist to satisfy some combination of
@@ -150,7 +149,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 ///   </tbody>
 /// </table>
 ///
-/// ### Fallible Allocation: The `try_alloc_` Method Prefix
+/// ## Fallible Allocation: The `try_alloc_` Method Prefix
 ///
 /// These allocation methods let you recover from out-of-memory (OOM)
 /// scenarios, rather than raising a panic on OOM.
@@ -176,7 +175,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// }
 /// ```
 ///
-/// ### Initializer Functions: The `_with` Method Suffix
+/// ## Initializer Functions: The `_with` Method Suffix
 ///
 /// Calling one of the generic `…alloc(x)` methods is essentially equivalent to
 /// the matching [`…alloc_with(|| x)`](?search=alloc_with). However if you use
@@ -194,7 +193,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// enough to help the compiler realize that this optimization is valid and
 /// to construct `x` directly onto the heap.
 ///
-/// #### Warning
+/// ### Warning
 ///
 /// These functions critically depend on compiler optimizations to achieve their
 /// desired effect. This means that it is not an effective tool when compiling
@@ -204,7 +203,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// the value is constructed on the heap. To the best of our knowledge no such
 /// guarantee can be made in stable Rust as of 1.54.
 ///
-/// ### Fallible Initialization: The `_try_with` Method Suffix
+/// ## Fallible Initialization: The `_try_with` Method Suffix
 ///
 /// The generic [`…alloc_try_with(|| x)`](?search=_try_with) methods behave
 /// like the purely `_with` suffixed methods explained above. However, they
@@ -212,7 +211,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// [`Result`] and will attempt to undo the initial allocation if this closure
 /// returns [`Err`].
 ///
-/// #### Warning
+/// ### Warning
 ///
 /// If the inner closure returns [`Ok`], space for the entire [`Result`] remains
 /// allocated inside `self`. This can be a problem especially if the [`Err`]
@@ -251,7 +250,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
 /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
 ///
-/// ### `Bump` Allocation Limits
+/// ## `Bump` Allocation Limits
 ///
 /// `bumpalo` supports setting a limit on the maximum bytes of memory that can
 /// be allocated for use in a particular `Bump` arena. This limit can be set and removed with
@@ -260,7 +259,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// a `Bump`. Updating the allocation limit will not affect existing allocations
 /// or any future allocations within the `Bump`'s current chunk.
 ///
-/// #### Example
+/// ### Example
 ///
 /// ```
 /// # use oxc_allocator::bump::Bump;
@@ -281,7 +280,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// assert_eq!(bump.allocation_limit(), None);
 /// ```
 ///
-/// #### Warning
+/// ### Warning
 ///
 /// Because of backwards compatibility, allocations that fail
 /// due to allocation limits will not present differently than
@@ -291,6 +290,9 @@ pub struct Bump<const MIN_ALIGN: usize = 1> {
     // The current chunk we are bump allocating within.
     current_chunk_footer: Cell<NonNull<ChunkFooter>>,
     allocation_limit: Cell<Option<usize>>,
+    /// Used to track number of allocations made in this `Bump` when `track_allocations` feature is enabled
+    #[cfg(all(feature = "track_allocations", not(feature = "disable_track_allocations")))]
+    pub(crate) stats: AllocationStats,
 }
 
 #[repr(C)]
@@ -355,16 +357,15 @@ impl EmptyChunkFooter {
 }
 
 impl ChunkFooter {
-    // Returns the start and length of the currently allocated region of this
-    // chunk.
-    fn as_raw_parts(&self) -> (*const u8, usize) {
+    /// Returns the start and length of the currently allocated region of this chunk.
+    fn as_raw_parts(&self) -> (*mut u8, usize) {
         let data = self.data.as_ptr().cast_const();
-        let ptr = self.ptr.get().as_ptr().cast_const();
+        let ptr = self.ptr.get().as_ptr();
         debug_assert!(data <= ptr);
-        debug_assert!(ptr <= ptr::from_ref::<ChunkFooter>(self).cast::<u8>());
-        #[expect(clippy::cast_sign_loss, reason = "`ptr` is always before or points to footer")]
+        debug_assert!(ptr.cast_const() <= ptr::from_ref::<ChunkFooter>(self).cast::<u8>());
+        // SAFETY: `ptr` is always before or equal to footer
         let len =
-            unsafe { ptr::from_ref::<ChunkFooter>(self).cast::<u8>().offset_from(ptr) as usize };
+            unsafe { ptr::from_ref::<ChunkFooter>(self).cast::<u8>().offset_from_unsigned(ptr) };
         (ptr, len)
     }
 
@@ -415,7 +416,7 @@ fn is_pointer_aligned_to<T>(pointer: *mut T, align: usize) -> bool {
 }
 
 #[inline]
-pub(crate) const fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
+const fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
     debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     match n.checked_add(divisor - 1) {
@@ -427,17 +428,17 @@ pub(crate) const fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
 /// Like `round_up_to` but turns overflow into undefined behavior rather than
 /// returning `None`.
 #[inline]
-pub(crate) unsafe fn round_up_to_unchecked(n: usize, divisor: usize) -> usize {
+unsafe fn round_up_to_unchecked(n: usize, divisor: usize) -> usize {
     if let Some(x) = round_up_to(n, divisor) {
         x
     } else {
         debug_assert!(false, "round_up_to_unchecked failed");
-        unsafe { core::hint::unreachable_unchecked() }
+        unsafe { unreachable_unchecked() }
     }
 }
 
 #[inline]
-pub(crate) fn round_down_to(n: usize, divisor: usize) -> usize {
+fn round_down_to(n: usize, divisor: usize) -> usize {
     debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     n & !(divisor - 1)
@@ -445,14 +446,14 @@ pub(crate) fn round_down_to(n: usize, divisor: usize) -> usize {
 
 /// Same as `round_down_to` but preserves pointer provenance.
 #[inline]
-pub(crate) fn round_mut_ptr_down_to(ptr: *mut u8, divisor: usize) -> *mut u8 {
+fn round_mut_ptr_down_to(ptr: *mut u8, divisor: usize) -> *mut u8 {
     debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     ptr.wrapping_sub(ptr as usize & (divisor - 1))
 }
 
 #[inline]
-pub(crate) unsafe fn round_mut_ptr_up_to_unchecked(ptr: *mut u8, divisor: usize) -> *mut u8 {
+unsafe fn round_mut_ptr_up_to_unchecked(ptr: *mut u8, divisor: usize) -> *mut u8 {
     debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     unsafe {
@@ -472,13 +473,23 @@ const TYPICAL_PAGE_SIZE: usize = 0x1000;
 
 // We only support alignments of up to 16 bytes for iter_allocated_chunks.
 const SUPPORTED_ITER_ALIGNMENT: usize = 16;
-const CHUNK_ALIGN: usize = SUPPORTED_ITER_ALIGNMENT;
-const FOOTER_SIZE: usize = mem::size_of::<ChunkFooter>();
+pub const CHUNK_ALIGN: usize = SUPPORTED_ITER_ALIGNMENT;
+pub const CHUNK_FOOTER_SIZE: usize = mem::size_of::<ChunkFooter>();
 
 // Assert that `ChunkFooter` is at the supported alignment. This will give a
 // compile time error if it is not the case
 const _FOOTER_ALIGN_ASSERTION: () = {
     assert!(mem::align_of::<ChunkFooter>() == CHUNK_ALIGN);
+};
+
+// Check the hard-coded value in `ast_tools` raw transfer generator is accurate.
+// We can only do this check if we're on a 64-bit little-endian platform with the `fixed_size` feature enabled,
+// because the `fixed_size_constants` module is only compiled under those conditions.
+// That's good enough, as the size of `ChunkFooter` only matters in that case anyway (Oxlint JS plugins).
+#[cfg(all(feature = "fixed_size", target_pointer_width = "64", target_endian = "little"))]
+const _: () = {
+    use crate::generated::fixed_size_constants::CHUNK_FOOTER_SIZE as EXPECTED_CHUNK_FOOTER_SIZE;
+    assert!(CHUNK_FOOTER_SIZE == EXPECTED_CHUNK_FOOTER_SIZE);
 };
 
 // Maximum typical overhead per allocation imposed by allocators.
@@ -490,7 +501,7 @@ const MALLOC_OVERHEAD: usize = 16;
 // after adding a footer, malloc overhead and alignment, the chunk of memory
 // the allocator actually sets aside for us is X+OVERHEAD rounded up to the
 // nearest suitable size boundary.
-const OVERHEAD: usize = match round_up_to(MALLOC_OVERHEAD + FOOTER_SIZE, CHUNK_ALIGN) {
+const OVERHEAD: usize = match round_up_to(MALLOC_OVERHEAD + CHUNK_FOOTER_SIZE, CHUNK_ALIGN) {
     Some(x) => x,
     None => panic!(),
 };
@@ -535,7 +546,7 @@ fn allocation_size_overflow<T>() -> T {
 impl Bump<1> {
     /// Construct a new arena to bump allocate into.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -548,7 +559,7 @@ impl Bump<1> {
 
     /// Attempt to construct a new arena to bump allocate into.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -563,7 +574,7 @@ impl Bump<1> {
     /// Construct a new arena with the specified byte capacity to bump allocate
     /// into.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -571,7 +582,7 @@ impl Bump<1> {
     /// # let _ = bump;
     /// ```
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if allocating the initial capacity fails.
     pub fn with_capacity(capacity: usize) -> Self {
@@ -583,7 +594,7 @@ impl Bump<1> {
     ///
     /// Propagates errors when allocating the initial capacity.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::{AllocErr, Bump};
@@ -648,10 +659,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             "MIN_ALIGN may not be larger than {CHUNK_ALIGN}; found {MIN_ALIGN}"
         );
 
-        Bump {
-            current_chunk_footer: Cell::new(EMPTY_CHUNK.get()),
-            allocation_limit: Cell::new(None),
-        }
+        Self::new_impl(EMPTY_CHUNK.get(), None)
     }
 
     /// Create a new `Bump` that enforces a minimum alignment and starts with
@@ -743,10 +751,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         );
 
         if capacity == 0 {
-            return Ok(Bump {
-                current_chunk_footer: Cell::new(EMPTY_CHUNK.get()),
-                allocation_limit: Cell::new(None),
-            });
+            return Ok(Self::new_impl(EMPTY_CHUNK.get(), None));
         }
 
         let layout = layout_from_size_align(capacity, MIN_ALIGN)?;
@@ -763,17 +768,27 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             .ok_or(AllocErr)?
         };
 
-        Ok(Bump {
-            current_chunk_footer: Cell::new(chunk_footer),
-            allocation_limit: Cell::new(None),
-        })
+        Ok(Self::new_impl(chunk_footer, None))
+    }
+
+    /// Create a new `Bump` from a chunk footer pointer and an optional allocation limit.
+    ///
+    /// This is a helper function for all code paths which create a `Bump`.
+    #[inline(always)]
+    fn new_impl(chunk_footer_ptr: NonNull<ChunkFooter>, allocation_limit: Option<usize>) -> Self {
+        Self {
+            current_chunk_footer: Cell::new(chunk_footer_ptr),
+            allocation_limit: Cell::new(allocation_limit),
+            #[cfg(all(feature = "track_allocations", not(feature = "disable_track_allocations")))]
+            stats: AllocationStats::default(),
+        }
     }
 
     /// Get this bump arena's minimum alignment.
     ///
     /// All objects allocated in this arena get aligned to this value.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -792,7 +807,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     /// The allocation limit for this arena in bytes.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -819,7 +834,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// a `Bump`. Updating the allocation limit will not affect existing allocations
     /// or any future allocations within the `Bump`'s current chunk.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -896,7 +911,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         debug_assert_eq!(align % CHUNK_ALIGN, 0);
         debug_assert_eq!(new_size_without_footer % CHUNK_ALIGN, 0);
         let size = new_size_without_footer
-            .checked_add(FOOTER_SIZE)
+            .checked_add(CHUNK_FOOTER_SIZE)
             .unwrap_or_else(allocation_size_overflow);
 
         Some(NewChunkMemoryDetails { new_size_without_footer, align, size })
@@ -972,7 +987,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// If this arena has allocated multiple chunks to bump allocate into, then
     /// the excess chunks are returned to the global allocator.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -996,6 +1011,9 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// }
     ///```
     pub fn reset(&mut self) {
+        #[cfg(all(feature = "track_allocations", not(feature = "disable_track_allocations")))]
+        self.stats.reset();
+
         // Takes `&mut self` so `self` must be unique and there can't be any
         // borrows active that would get invalidated by resetting.
         unsafe {
@@ -1017,7 +1035,8 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             cur_chunk.as_ref().ptr.set(cur_chunk.cast());
 
             // Reset the allocated size of the chunk.
-            cur_chunk.as_mut().allocated_bytes = cur_chunk.as_ref().layout.size() - FOOTER_SIZE;
+            cur_chunk.as_mut().allocated_bytes =
+                cur_chunk.as_ref().layout.size() - CHUNK_FOOTER_SIZE;
 
             debug_assert!(
                 self.current_chunk_footer.get().as_ref().prev.get().as_ref().is_empty(),
@@ -1034,11 +1053,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// Allocate an object in this `Bump` and return an exclusive reference to
     /// it.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for `T` fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1055,11 +1074,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// Try to allocate an object in this `Bump` and return an exclusive
     /// reference to it.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Errors if reserving space for `T` fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1081,11 +1100,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// those methods without it, their performance characteristics, and when
     /// you might or might not choose a `_with` suffixed method.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for `T` fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1136,11 +1155,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// those methods without it, their performance characteristics, and when
     /// you might or might not choose a `_with` suffixed method.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Errors if reserving space for `T` fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1204,15 +1223,15 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
     /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Iff the allocation succeeds but `f` fails, that error is forwarded by value.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for `Result<T, E>` fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1315,7 +1334,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
     /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Errors with the [`Alloc`](`AllocOrInitError::Alloc`) variant iff
     /// reserving space for `Result<T, E>` fails.
@@ -1323,7 +1342,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// Iff the allocation succeeds but `f` fails, that error is forwarded by
     /// value inside the [`Init`](`AllocOrInitError::Init`) variant.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::{AllocOrInitError, Bump};
@@ -1407,11 +1426,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// `Copy` a slice into this `Bump` and return an exclusive reference to
     /// the copy.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1437,7 +1456,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     /// Like `alloc_slice_copy`, but does not panic in case of allocation failure.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::{AllocErr, Bump};
@@ -1468,7 +1487,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         let layout = Layout::for_value(src);
         let dst = self.try_alloc_layout(layout)?.cast::<T>();
         let result = unsafe {
-            core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), src.len());
+            ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), src.len());
             slice::from_raw_parts_mut(dst.as_ptr(), src.len())
         };
         Ok(result)
@@ -1477,11 +1496,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// `Clone` a slice into this `Bump` and return an exclusive reference to
     /// the clone. Prefer [`alloc_slice_copy`](#method.alloc_slice_copy) if `T` is `Copy`.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1547,11 +1566,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     /// `Copy` a string slice into this `Bump` and return an exclusive reference to it.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the string fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1572,7 +1591,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     /// Same as `alloc_str` but does not panic on failure.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::{AllocErr, Bump};
@@ -1611,11 +1630,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// The elements of the slice are initialized using the supplied closure.
     /// The closure argument is the position in the slice.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1650,11 +1669,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// The elements of the slice are initialized using the supplied closure.
     /// The closure argument is the position in the slice.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1715,7 +1734,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// The elements of the slice are initialized using the supplied closure.
     /// The closure argument is the position in the slice.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::{AllocErr, Bump};
@@ -1768,11 +1787,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///
     /// All elements of the slice are initialized to `value`.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1809,11 +1828,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///
     /// All elements of the slice are initialized to `value.clone()`.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1853,12 +1872,12 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///
     /// The elements are initialized using the supplied iterator.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails, or if the supplied
     /// iterator returns fewer elements than it promised.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1884,12 +1903,12 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///
     /// The elements are initialized using the supplied iterator.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails, or if the supplied
     /// iterator returns fewer elements than it promised.
     ///
-    /// ## Examples
+    /// # Examples
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1934,7 +1953,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///
     /// The elements are initialized using the supplied iterator.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -1977,11 +1996,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///
     /// [`T::default()`]: https://doc.rust-lang.org/std/default/trait.Default.html#tymethod.default
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if reserving space for the slice fails.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -2038,11 +2057,18 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// Errors if reserving space matching `layout` fails.
     #[inline(always)]
     pub fn try_alloc_layout(&self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
-        if let Some(p) = self.try_alloc_layout_fast(layout) {
+        let res = if let Some(p) = self.try_alloc_layout_fast(layout) {
             Ok(p)
         } else {
             self.alloc_layout_slow(layout).ok_or(AllocErr)
+        };
+
+        #[cfg(all(feature = "track_allocations", not(feature = "disable_track_allocations")))]
+        if res.is_ok() {
+            self.stats.record_allocation();
         }
+
+        res
     }
 
     #[inline(always)]
@@ -2141,7 +2167,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     /// Gets the remaining capacity in the current chunk (in bytes).
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -2176,7 +2202,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             // size is smaller than the default footer size.
             let min_new_chunk_size = layout.size().max(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
             let mut base_size =
-                (current_layout.size() - FOOTER_SIZE).checked_mul(2)?.max(min_new_chunk_size);
+                (current_layout.size() - CHUNK_FOOTER_SIZE).checked_mul(2)?.max(min_new_chunk_size);
             let mut chunk_memory_details = iter::from_fn(|| {
                 let bypass_min_chunk_size_for_small_limits = matches!(self.allocation_limit(), Some(limit) if layout.size() < limit
                             && base_size >= layout.size()
@@ -2227,7 +2253,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// the most recent allocation being earlier in the slice, and the least
     /// recent allocation being towards the end of the slice.
     ///
-    /// ## Safety
+    /// # SAFETY
     ///
     /// Because this method takes `&mut self`, we know that the bump arena
     /// reference is unique and therefore there aren't any active references to
@@ -2256,7 +2282,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// arena have not had their `Drop` implementations called on them,
     /// e.g. after dropping a [`bumpalo::boxed::Box<T>`][crate::boxed::Box].
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -2302,7 +2328,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// }
     /// ```
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_, MIN_ALIGN> {
-        // Safety: Ensured by mutable borrow of `self`.
+        // SAFETY: Ensured by mutable borrow of `self`.
         let raw = unsafe { self.iter_allocated_chunks_raw() };
         ChunkIter { raw, bump: PhantomData }
     }
@@ -2315,7 +2341,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// well as ensuring that the iterator is not invalidated by new
     /// allocations.
     ///
-    /// ## Safety
+    /// # SAFETY
     ///
     /// Allocations from this arena must not be performed while the returned
     /// iterator is alive. If reading the chunk data (or casting to a reference)
@@ -2342,7 +2368,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// so the amount of memory requested from the Rust allocator is higher
     /// than the returned value.
     ///
-    /// ## Example
+    /// # Example
     ///
     /// ```
     /// # use oxc_allocator::bump::Bump;
@@ -2350,7 +2376,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// let bump = Bump::new();
     /// let _x = bump.alloc_slice_fill_default::<u32>(5);
     /// let bytes = bump.allocated_bytes();
-    /// assert!(bytes >= core::mem::size_of::<u32>() * 5);
+    /// assert!(bytes >= size_of::<u32>() * 5);
     /// ```
     pub fn allocated_bytes(&self) -> usize {
         let footer = self.current_chunk_footer.get();
@@ -2419,6 +2445,12 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             } else {
                 let new_ptr = self.try_alloc_layout(new_layout)?;
 
+                #[cfg(all(
+                    feature = "track_allocations",
+                    not(feature = "disable_track_allocations")
+                ))]
+                self.stats.record_reallocation_after_allocation();
+
                 // We know that these regions are nonoverlapping because
                 // `new_ptr` is a fresh allocation.
                 unsafe {
@@ -2486,6 +2518,12 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                 // in the `if` condition.
                 ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
 
+                #[cfg(all(
+                    feature = "track_allocations",
+                    not(feature = "disable_track_allocations")
+                ))]
+                self.stats.record_reallocation();
+
                 return Ok(new_ptr);
             }
         }
@@ -2517,6 +2555,13 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                 self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align())?)
             {
                 unsafe { ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size) };
+
+                #[cfg(all(
+                    feature = "track_allocations",
+                    not(feature = "disable_track_allocations")
+                ))]
+                self.stats.record_reallocation();
+
                 return Ok(p);
             }
         }
@@ -2524,7 +2569,128 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         // Fallback: do a fresh allocation and copy the existing data into it.
         let new_ptr = self.try_alloc_layout(new_layout)?;
         unsafe { ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size) };
+
+        #[cfg(all(feature = "track_allocations", not(feature = "disable_track_allocations")))]
+        self.stats.record_reallocation_after_allocation();
+
         Ok(new_ptr)
+    }
+}
+
+/// Methods only available when `from_raw_parts` feature is enabled.
+/// These methods are only used by raw transfer.
+#[cfg(feature = "from_raw_parts")]
+impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
+    /// Construct a static-sized [`Bump`] from an existing memory allocation.
+    ///
+    /// The [`Bump`] which is returned takes ownership of the memory allocation,
+    /// and the allocation will be freed if the `Bump` is dropped.
+    /// If caller wishes to prevent that happening, they must wrap the `Bump` in `ManuallyDrop`.
+    ///
+    /// The [`Bump`] returned by this function cannot grow.
+    ///
+    /// # SAFETY
+    ///
+    /// * `ptr` must be aligned on [`CHUNK_ALIGN`].
+    /// * `size` must be a multiple of [`CHUNK_ALIGN`].
+    /// * `size` must be at least [`CHUNK_FOOTER_SIZE`].
+    /// * The memory region starting at `ptr` and encompassing `size` bytes must be within a single allocation.
+    /// * The memory region starting at `ptr` and encompassing `size` bytes must have been allocated from system
+    ///   allocator with alignment of [`CHUNK_ALIGN`] (or caller must wrap the `Bump` in `ManuallyDrop`
+    ///   and ensure the backing memory is freed correctly themselves).
+    /// * `ptr` must have permission for writes.
+    ///
+    /// # Panics
+    ///
+    /// Panics on invalid minimum alignments.
+    pub unsafe fn from_raw_parts(ptr: NonNull<u8>, size: usize) -> Self {
+        // Validate `MIN_ALIGN`. These checks will be removed by compiler as `MIN_ALIGN` is statically known.
+        assert!(MIN_ALIGN.is_power_of_two(), "MIN_ALIGN must be a power of two; found {MIN_ALIGN}");
+        assert!(
+            MIN_ALIGN <= CHUNK_ALIGN,
+            "MIN_ALIGN may not be larger than {CHUNK_ALIGN}; found {MIN_ALIGN}"
+        );
+
+        // Debug assert that `ptr` and `size` fulfill size and alignment requirements
+        debug_assert!((ptr.as_ptr() as usize).is_multiple_of(CHUNK_ALIGN));
+        debug_assert!(size.is_multiple_of(CHUNK_ALIGN));
+        debug_assert!(size >= CHUNK_FOOTER_SIZE);
+
+        let size_without_footer = size - CHUNK_FOOTER_SIZE;
+
+        // Construct `ChunkFooter` and write into end of allocation.
+        // SAFETY: Caller guarantees:
+        // * `ptr` is the start of an allocation of `size` bytes.
+        // * `size` is `>= CHUNK_FOOTER_SIZE` - so `size - CHUNK_FOOTER_SIZE` cannot wrap around.
+        let chunk_footer_ptr = unsafe { ptr.add(size_without_footer) }.cast::<ChunkFooter>();
+        // SAFETY: Caller guarantees `size` is a multiple of `CHUNK_ALIGN`.
+        // Caller guarantees region from `ptr` to `ptr + size` forms a single allocation,
+        // so it must be a valid layout.
+        let layout = unsafe { Layout::from_size_align_unchecked(size, CHUNK_ALIGN) };
+        let chunk_footer = ChunkFooter {
+            data: ptr,
+            layout,
+            prev: Cell::new(EMPTY_CHUNK.get()),
+            ptr: Cell::new(chunk_footer_ptr.cast::<u8>()),
+            allocated_bytes: size_without_footer,
+        };
+
+        // SAFETY: If caller has upheld safety requirements, `chunk_footer_ptr` is `CHUNK_FOOTER_SIZE`
+        // bytes from the end of the allocation, and aligned on `CHUNK_ALIGN`.
+        // Therefore `chunk_footer_ptr` is valid for writing a `ChunkFooter`.
+        unsafe { chunk_footer_ptr.write(chunk_footer) };
+
+        // Create `Bump` with allocation limit of `size_without_footer`.
+        // i.e. it cannot grow because it's already exactly at its limit.
+        // This means that the memory chunk we've just created will remain its only chunk.
+        // Therefore it can never be deallocated, until the `Bump` is dropped.
+        // `Bump::reset` would only reset the "cursor" pointer, not deallocate the memory.
+        Self::new_impl(chunk_footer_ptr, Some(size_without_footer))
+    }
+
+    /// Set cursor pointer for this [`Bump`]'s current chunk.
+    ///
+    /// This is dangerous, and this method should not ordinarily be used.
+    /// It is only here for manually resetting the `Bump`.
+    ///
+    /// # SAFETY
+    ///
+    /// * `Bump` must have at least 1 allocated chunk.
+    ///   It is UB to call this method on an `Bump` which has not allocated
+    ///   i.e. fresh from `Bump::new`.
+    /// * `ptr` must point to within the `Bump`'s current chunk.
+    /// * `ptr` must be equal to or after data pointer for this chunk.
+    /// * `ptr` must be equal to or before the chunk's `ChunkFooter`.
+    /// * `ptr` must be aligned to `MIN_ALIGN`.
+    /// * No live references to data in the current chunk before `ptr` can exist.
+    pub unsafe fn set_cursor_ptr(&self, ptr: NonNull<u8>) {
+        // SAFETY: `current_chunk_footer` always points to a valid `ChunkFooter`
+        let chunk_footer = unsafe { self.current_chunk_footer.get().as_ref() };
+
+        debug_assert!(ptr.as_ptr() >= chunk_footer.data.as_ptr());
+        debug_assert!(ptr.as_ptr().cast_const() <= ptr::from_ref(chunk_footer).cast::<u8>());
+        debug_assert!(ptr.addr().get().is_multiple_of(MIN_ALIGN));
+
+        // SAFETY: Caller guarantees `Bump` has at least 1 allocated chunk, and `ptr` is valid.
+        #[expect(clippy::unnecessary_safety_comment)]
+        chunk_footer.ptr.set(ptr);
+    }
+
+    /// Get pointer to end of the data region of this [`Bump`]'s current chunk
+    /// i.e to the start of the `ChunkFooter`.
+    pub fn data_end_ptr(&self) -> NonNull<u8> {
+        self.current_chunk_footer.get().cast::<u8>()
+    }
+
+    /// Get pointer to end of this [`Bump`]'s current chunk (after the `ChunkFooter`).
+    pub fn end_ptr(&self) -> NonNull<u8> {
+        let chunk_footer_ptr = self.current_chunk_footer.get();
+
+        // SAFETY: `chunk_footer_ptr` always points to a valid `ChunkFooter`,
+        // so stepping past it cannot be out of bounds of the chunk's allocation.
+        // If `Bump` has not allocated, so `chunk_footer_ptr` returns a pointer to the static empty chunk,
+        // it's still valid.
+        unsafe { chunk_footer_ptr.add(1).cast::<u8>() }
     }
 }
 
@@ -2589,7 +2755,7 @@ impl<const MIN_ALIGN: usize> Iterator for ChunkRawIter<'_, MIN_ALIGN> {
             }
             let (ptr, len) = foot.as_raw_parts();
             self.footer = foot.prev.get();
-            Some((ptr.cast_mut(), len))
+            Some((ptr, len))
         }
     }
 }
@@ -2602,7 +2768,7 @@ fn oom() -> ! {
     panic!("out of memory")
 }
 
-unsafe impl<const MIN_ALIGN: usize> bumpalo_alloc::Alloc for &Bump<MIN_ALIGN> {
+unsafe impl<const MIN_ALIGN: usize> BumpaloAlloc for &Bump<MIN_ALIGN> {
     #[inline(always)]
     unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
         self.try_alloc_layout(layout)
@@ -2723,7 +2889,7 @@ mod tests {
         assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 8);
     }
 
-    // Uses private `DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER` and `FOOTER_SIZE`.
+    // Uses private `DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER` and `CHUNK_FOOTER_SIZE`.
     #[test]
     fn allocated_bytes() {
         let mut b = Bump::new();
@@ -2736,7 +2902,7 @@ mod tests {
         assert_eq!(b.allocated_bytes(), DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
         assert_eq!(
             b.allocated_bytes_including_metadata(),
-            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER + FOOTER_SIZE
+            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER + CHUNK_FOOTER_SIZE
         );
 
         b.reset();
@@ -2744,15 +2910,13 @@ mod tests {
         assert_eq!(b.allocated_bytes(), DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
         assert_eq!(
             b.allocated_bytes_including_metadata(),
-            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER + FOOTER_SIZE
+            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER + CHUNK_FOOTER_SIZE
         );
     }
 
-    // Uses private `alloc` module.
+    // Uses private `bumpalo_alloc` module.
     #[test]
     fn test_realloc() {
-        use crate::bumpalo_alloc::Alloc;
-
         unsafe {
             const CAPACITY: usize = DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER;
             let mut b = Bump::<1>::with_min_align_and_capacity(CAPACITY);
@@ -2797,19 +2961,17 @@ mod tests {
         }
     }
 
-    // Uses our private `alloc` module.
+    // Uses our private `bumpalo_alloc` module.
     #[test]
     fn invalid_read() {
-        use crate::bumpalo_alloc::Alloc;
-
         let mut b = &Bump::new();
 
         unsafe {
             let l1 = Layout::from_size_align(12000, 4).unwrap();
-            let p1 = Alloc::alloc(&mut b, l1).unwrap();
+            let p1 = BumpaloAlloc::alloc(&mut b, l1).unwrap();
 
             let l2 = Layout::from_size_align(1000, 4).unwrap();
-            Alloc::alloc(&mut b, l2).unwrap();
+            BumpaloAlloc::alloc(&mut b, l2).unwrap();
 
             let p1 = b.realloc(p1, l1, 24000).unwrap();
             let l3 = Layout::from_size_align(24000, 4).unwrap();

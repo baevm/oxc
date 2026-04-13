@@ -44,7 +44,8 @@ declare_oxc_lint!(
     /// ```
     NoInvalidRemoveEventListener,
     unicorn,
-    correctness
+    correctness,
+    version = "0.0.16",
 );
 
 impl Rule for NoInvalidRemoveEventListener {
