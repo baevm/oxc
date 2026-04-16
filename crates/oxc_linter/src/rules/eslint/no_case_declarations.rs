@@ -196,6 +196,24 @@ fn test() {
             "switch (a) { default: { class C {} break; } }",
         ),
         ("switch (a) { case 1: case 2: let x; }", "switch (a) { case 1: case 2: { let x; } }"),
+        (
+            r#"switch ("foo") {
+                    case "bar":
+                        function baz() { }
+                        break;
+                    default:
+                        baz();
+                }
+        "#,
+            r#"switch ("foo") {
+                    case "bar":
+                        { function baz() { }
+                        break; }
+                    default:
+                        baz();
+                }
+        "#,
+        ),
     ];
 
     Tester::new(NoCaseDeclarations::NAME, NoCaseDeclarations::PLUGIN, pass, fail)
