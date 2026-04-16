@@ -143,74 +143,59 @@ fn test() {
     use crate::tester::Tester;
 
     let pass = vec![
-        ("switch (a) { case 1: { let x = 1; break; } default: { let x = 2; break; } }", None),
-        ("switch (a) { case 1: { const x = 1; break; } default: { const x = 2; break; } }", None),
-        (
-            "switch (a) { case 1: { function f() {} break; } default: { function f() {} break; } }",
-            None,
-        ),
-        ("switch (a) { case 1: { class C {} break; } default: { class C {} break; } }", None),
+        ("switch (a) { case 1: { let x = 1; break; } default: { let x = 2; break; } }"),
+        ("switch (a) { case 1: { const x = 1; break; } default: { const x = 2; break; } }"),
+        ("switch (a) { case 1: { function f() {} break; } default: { function f() {} break; } }"),
+        ("switch (a) { case 1: { class C {} break; } default: { class C {} break; } }"),
     ];
 
     let fail = vec![
-        ("switch (a) { case 1: let x = 1; break; }", None),
-        ("switch (a) { default: let x = 2; break; }", None),
-        ("switch (a) { case 1: const x = 1; break; }", None),
-        ("switch (a) { default: const x = 2; break; }", None),
-        ("switch (a) { case 1: function f() {} break; }", None),
-        ("switch (a) { default: function f() {} break; }", None),
-        ("switch (a) { case 1: class C {} break; }", None),
-        ("switch (a) { default: class C {} break; }", None),
-        ("switch (a) { default: using x = {}; break; }", None),
-        ("switch (a) { default: await using x = {}; break; }", None),
+        ("switch (a) { case 1: let x = 1; break; }"),
+        ("switch (a) { default: let x = 2; break; }"),
+        ("switch (a) { case 1: const x = 1; break; }"),
+        ("switch (a) { default: const x = 2; break; }"),
+        ("switch (a) { case 1: function f() {} break; }"),
+        ("switch (a) { default: function f() {} break; }"),
+        ("switch (a) { case 1: class C {} break; }"),
+        ("switch (a) { default: class C {} break; }"),
+        ("switch (a) { default: using x = {}; break; }"),
+        ("switch (a) { default: await using x = {}; break; }"),
     ];
 
     let fix = vec![
         (
             "switch (a) { case 1: let x = 1; break; }",
             "switch (a) { case 1: { let x = 1; break; } }",
-            None,
         ),
         (
             "switch (a) { default: let x = 2; break; }",
             "switch (a) { default: { let x = 2; break; } }",
-            None,
         ),
         (
             "switch (a) { case 1: const x = 1; break; }",
             "switch (a) { case 1: { const x = 1; break; } }",
-            None,
         ),
         (
             "switch (a) { default: const x = 2; break; }",
             "switch (a) { default: { const x = 2; break; } }",
-            None,
         ),
         (
             "switch (a) { case 1: function f() {} break; }",
             "switch (a) { case 1: { function f() {} break; } }",
-            None,
         ),
         (
             "switch (a) { default: function f() {} break; }",
             "switch (a) { default: { function f() {} break; } }",
-            None,
         ),
         (
             "switch (a) { case 1: class C {} break; }",
             "switch (a) { case 1: { class C {} break; } }",
-            None,
         ),
         (
             "switch (a) { default: class C {} break; }",
             "switch (a) { default: { class C {} break; } }",
-            None,
         ),
-        (
-            "switch (a) { case 1: case 2: let x; }",
-            "switch (a) { case 1: case 2: { let x; } }",
-            None,
-        ),
+        ("switch (a) { case 1: case 2: let x; }", "switch (a) { case 1: case 2: { let x; } }"),
     ];
 
     Tester::new(NoCaseDeclarations::NAME, NoCaseDeclarations::PLUGIN, pass, fail)
