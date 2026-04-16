@@ -1,6 +1,6 @@
 use oxc_ast::{
     AstKind,
-    ast::{Statement, VariableDeclarationKind},
+    ast::{Statement, SwitchCase, VariableDeclarationKind},
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
@@ -70,7 +70,7 @@ declare_oxc_lint!(
     NoCaseDeclarations,
     eslint,
     pedantic,
-    pending,
+    suggestion,
     version = "0.0.4",
 );
 
@@ -84,12 +84,14 @@ impl Rule for NoCaseDeclarations {
                     Statement::FunctionDeclaration(d) => {
                         let start = d.span.start;
                         let end = start + 8;
-                        ctx.diagnostic(no_case_declarations_diagnostic(Span::new(start, end)));
+                        let span = Span::new(start, end);
+                        report_with_add_braces_suggestion(ctx, span, switch_case);
                     }
                     Statement::ClassDeclaration(d) => {
                         let start = d.span.start;
                         let end = start + 5;
-                        ctx.diagnostic(no_case_declarations_diagnostic(Span::new(start, end)));
+                        let span = Span::new(start, end);
+                        report_with_add_braces_suggestion(ctx, span, switch_case);
                     }
                     Statement::VariableDeclaration(var) if var.kind.is_lexical() => {
                         let start = var.span.start;
@@ -105,13 +107,35 @@ impl Rule for NoCaseDeclarations {
                             VariableDeclarationKind::Var => unreachable!(),
                         };
                         let end = start + len;
-                        ctx.diagnostic(no_case_declarations_diagnostic(Span::new(start, end)));
+                        let span = Span::new(start, end);
+                        report_with_add_braces_suggestion(ctx, span, switch_case);
                     }
                     _ => {}
                 }
             }
         }
     }
+}
+
+fn report_with_add_braces_suggestion(
+    ctx: &LintContext,
+    declaration_span: Span,
+    switch_case: &SwitchCase,
+) {
+    ctx.diagnostic_with_suggestion(no_case_declarations_diagnostic(declaration_span), |fixer| {
+        let Some(first_stmt) = switch_case.consequent.first() else {
+            return fixer.noop();
+        };
+        let Some(last_stmt) = switch_case.consequent.last() else {
+            return fixer.noop();
+        };
+
+        let fixer = fixer.for_multifix();
+        let mut fix = fixer.new_fix_with_capacity(2);
+        fix.push(fixer.insert_text_before(first_stmt, "{ "));
+        fix.push(fixer.insert_text_after(last_stmt, " }"));
+        fix.with_message("Add {} brackets around the case block.")
+    });
 }
 
 #[test]
@@ -141,6 +165,55 @@ fn test() {
         ("switch (a) { default: await using x = {}; break; }", None),
     ];
 
+    let fix = vec![
+        (
+            "switch (a) { case 1: let x = 1; break; }",
+            "switch (a) { case 1: { let x = 1; break; } }",
+            None,
+        ),
+        (
+            "switch (a) { default: let x = 2; break; }",
+            "switch (a) { default: { let x = 2; break; } }",
+            None,
+        ),
+        (
+            "switch (a) { case 1: const x = 1; break; }",
+            "switch (a) { case 1: { const x = 1; break; } }",
+            None,
+        ),
+        (
+            "switch (a) { default: const x = 2; break; }",
+            "switch (a) { default: { const x = 2; break; } }",
+            None,
+        ),
+        (
+            "switch (a) { case 1: function f() {} break; }",
+            "switch (a) { case 1: { function f() {} break; } }",
+            None,
+        ),
+        (
+            "switch (a) { default: function f() {} break; }",
+            "switch (a) { default: { function f() {} break; } }",
+            None,
+        ),
+        (
+            "switch (a) { case 1: class C {} break; }",
+            "switch (a) { case 1: { class C {} break; } }",
+            None,
+        ),
+        (
+            "switch (a) { default: class C {} break; }",
+            "switch (a) { default: { class C {} break; } }",
+            None,
+        ),
+        (
+            "switch (a) { case 1: case 2: let x; }",
+            "switch (a) { case 1: case 2: { let x; } }",
+            None,
+        ),
+    ];
+
     Tester::new(NoCaseDeclarations::NAME, NoCaseDeclarations::PLUGIN, pass, fail)
+        .expect_fix(fix)
         .test_and_snapshot();
 }
