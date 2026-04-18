@@ -723,6 +723,10 @@ fn test() {
             Some(serde_json::json!([{ "allow": ["generatorFunctions"] }])),
         ),
         (
+            "const foo = function(param: string) {};",
+            Some(serde_json::json!([{ "allow": ["functions"] }])),
+        ),
+        (
             "const foo = function*(param: string) {};",
             Some(serde_json::json!([{ "allow": ["generatorFunctions"] }])),
         ),
