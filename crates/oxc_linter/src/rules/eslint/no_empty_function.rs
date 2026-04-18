@@ -422,22 +422,23 @@ impl NoEmptyFunction {
                     if let Some(init) = &decl.init {
                         match init.get_inner_expression() {
                             Expression::FunctionExpression(function)
-                                if (function.r#async && self.allow.contains(Allowed::AsyncFunctions)
+                                if (function.r#async
+                                    && self.allow.contains(Allowed::AsyncFunctions)
                                     || function.generator
                                         && self.allow.contains(Allowed::GeneratorFunctions)
                                     || !function.r#async
                                         && !function.generator
-                                        && self.allow.contains(Allowed::Function))
-                                => {
-                                    return ViolationInfo::default();
-                                }
+                                        && self.allow.contains(Allowed::Function)) =>
+                            {
+                                return ViolationInfo::default();
+                            }
                             Expression::ArrowFunctionExpression(function)
                                 if (self.allow.contains(Allowed::ArrowFunction)
                                     || function.r#async
-                                        && self.allow.contains(Allowed::AsyncFunctions))
-                                => {
-                                    return ViolationInfo::default();
-                                }
+                                        && self.allow.contains(Allowed::AsyncFunctions)) =>
+                            {
+                                return ViolationInfo::default();
+                            }
                             _ => {}
                         }
                     }
