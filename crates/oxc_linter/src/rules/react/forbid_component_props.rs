@@ -83,8 +83,8 @@ pub enum ForbidItem {
     Object(ForbidItemObject),
 }
 
-#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+#[derive(Debug, Clone, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ForbidItemObject {
     /// Exact prop name to forbid.
     prop_name: Option<CompactStr>,
@@ -102,6 +102,46 @@ pub struct ForbidItemObject {
     disallowed_for_patterns: Vec<CompactStr>,
     /// Custom message to display.
     message: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct RawForbidItemObject {
+    prop_name: Option<CompactStr>,
+    prop_name_pattern: Option<CompactStr>,
+    allowed_for: Vec<CompactStr>,
+    allowed_for_patterns: Vec<CompactStr>,
+    disallowed_for: Vec<CompactStr>,
+    disallowed_for_patterns: Vec<CompactStr>,
+    message: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for ForbidItemObject {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawForbidItemObject::deserialize(deserializer)?;
+
+        let has_prop_name = raw.prop_name.is_some();
+        let has_prop_name_pattern = raw.prop_name_pattern.is_some();
+
+        if has_prop_name == has_prop_name_pattern {
+            return Err(serde::de::Error::custom(
+                "forbid item object must include exactly one of `propName` or `propNamePattern`",
+            ));
+        }
+
+        Ok(Self {
+            prop_name: raw.prop_name,
+            prop_name_pattern: raw.prop_name_pattern,
+            allowed_for: raw.allowed_for,
+            allowed_for_patterns: raw.allowed_for_patterns,
+            disallowed_for: raw.disallowed_for,
+            disallowed_for_patterns: raw.disallowed_for_patterns,
+            message: raw.message,
+        })
+    }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, JsonSchema)]
@@ -163,11 +203,13 @@ impl From<ForbidComponentPropsConfig> for ForbidComponentProps {
             .map(|item| match item {
                 ForbidItem::PropName(name) => (name, ForbidOption::default()),
                 ForbidItem::Object(obj) => {
-                    let is_pattern = obj.prop_name_pattern.is_some();
-                    let key = obj
-                        .prop_name
-                        .or(obj.prop_name_pattern)
-                        .unwrap_or_else(|| CompactStr::new(""));
+                    let (key, is_pattern) = match (obj.prop_name, obj.prop_name_pattern) {
+                        (Some(prop_name), None) => (prop_name, false),
+                        (None, Some(prop_name_pattern)) => (prop_name_pattern, true),
+                        _ => unreachable!(
+                            "ForbidItemObject deserialization enforces exactly one matcher key"
+                        ),
+                    };
                     (
                         key,
                         ForbidOption {
@@ -735,4 +777,22 @@ fn test() {
 
     Tester::new(ForbidComponentProps::NAME, ForbidComponentProps::PLUGIN, pass, fail)
         .test_and_snapshot();
+}
+
+#[test]
+fn invalid_configs_error_in_from_configuration() {
+    let missing_both = serde_json::json!([{
+        "forbid": [{
+            "allowedFor": ["Foo"]
+        }]
+    }]);
+    assert!(ForbidComponentProps::from_configuration(missing_both).is_err());
+
+    let has_both = serde_json::json!([{
+        "forbid": [{
+            "propName": "className",
+            "propNamePattern": "**-**"
+        }]
+    }]);
+    assert!(ForbidComponentProps::from_configuration(has_both).is_err());
 }
