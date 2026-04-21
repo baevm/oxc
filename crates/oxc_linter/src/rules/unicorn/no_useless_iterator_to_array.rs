@@ -159,7 +159,7 @@ struct ToArrayCallFix {
 }
 
 impl ToArrayCallFix {
-    fn fix<'a>(self, fixer: RuleFixer<'_, 'a>) -> RuleFix {
+    fn fix(self, fixer: RuleFixer<'_, '_>) -> RuleFix {
         let multi_fixer = fixer.for_multifix();
         let mut fix = multi_fixer.new_fix_with_capacity(2);
         // remove `.toArray`
