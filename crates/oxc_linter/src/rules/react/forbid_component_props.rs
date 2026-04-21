@@ -3,7 +3,7 @@ use oxc_ast::AstKind;
 use oxc_ast::ast::JSXElementName;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
-use oxc_span::Span;
+use oxc_span::{GetSpan, Span};
 use oxc_str::CompactStr;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -314,7 +314,7 @@ impl Rule for ForbidComponentProps {
 
             if option.is_forbidden(tag_name_for_check.as_deref()) {
                 ctx.diagnostic(forbid_component_props_diagnostic(
-                    attr.span,
+                    attr.name.span(),
                     prop_name,
                     option.message.as_deref(),
                 ));
