@@ -17076,6 +17076,7 @@ impl RuleEnum {
             }
             Self::ReactDisplayName(_) => ReactDisplayName::VERSION,
             Self::ReactExhaustiveDeps(_) => ReactExhaustiveDeps::VERSION,
+            Self::ReactForbidComponentProps(_) => ReactForbidComponentProps::VERSION,
             Self::ReactForbidDomProps(_) => ReactForbidDomProps::VERSION,
             Self::ReactForbidElements(_) => ReactForbidElements::VERSION,
             Self::ReactForwardRefUsesRef(_) => ReactForwardRefUsesRef::VERSION,
