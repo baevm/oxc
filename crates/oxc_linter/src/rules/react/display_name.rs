@@ -694,10 +694,7 @@ fn check_class_component(
                     name: Some(CompactStr::from(name.name.as_str())),
                 });
             }
-
-            if extends_react_component(class) {
-                return Some(ReactComponentInfo { span, is_context: false, name: None });
-            }
+            return None;
         }
     } else {
         // Anonymous class
@@ -987,6 +984,17 @@ fn test() {
             "
                     export default class Hello {
                       render() {
+                        return <div>Hello {this.props.name}</div>;
+                      }
+                    }
+                  ",
+            None,
+            None,
+        ),
+        (
+            "
+                    export default class Logo extends React.Component<Props> {
+                      public render(): React.ReactNode {
                         return <div>Hello {this.props.name}</div>;
                       }
                     }
