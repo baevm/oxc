@@ -284,9 +284,16 @@ impl LanguageServer for Backend {
                 registrations.extend(worker.init_watchers().await);
             }
 
-            if let Some(dynamic_worker) = self.worker_manager.read_dynamic_worker().await {
-                registrations.extend(dynamic_worker.init_watchers().await);
-            }
+            // The watcher logic does handle per workspace, the dynamic worker is targeting the root (`file:///`).
+            // We do not want to include them, or the client will watch the whole file system, which can be very expensive.
+            // Current Assumption: The user does not modify files outside the workspace + the outside config file at the same session.
+            // If this becomes a problem in the future, we can consider adding dynamic watchers for the dynamic worker as well,
+            // but we need to optimize the logic.
+            // Example optimization: Only return registered config paths instead of watching the workspace root.
+            // Adding a "add" watcher for the root should still be applied.
+            // if let Some(dynamic_worker) = self.worker_manager.read_dynamic_worker().await {
+            //     registrations.extend(dynamic_worker.init_watchers().await);
+            // }
         }
 
         if registrations.is_empty() {
