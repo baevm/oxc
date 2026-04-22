@@ -676,6 +676,12 @@ fn check_class_component(
     span: Span,
     ignore_transpiler_name: bool,
 ) -> Option<ReactComponentInfo> {
+    // Named default-export classes are handled in phase 1 via symbols/references.
+    // Keep this path for anonymous default-export classes only.
+    if class.id.is_some() {
+        return None;
+    }
+
     if class_has_static_display_name(class) {
         return None;
     }
@@ -684,27 +690,13 @@ fn check_class_component(
         return None;
     }
 
-    // If class has a name
-    if let Some(name) = &class.id {
-        if is_react_component_name(&name.name) {
-            if ignore_transpiler_name {
-                return Some(ReactComponentInfo {
-                    span,
-                    is_context: false,
-                    name: Some(CompactStr::from(name.name.as_str())),
-                });
-            }
-            return None;
-        }
-    } else {
-        // Anonymous class
-        if ignore_transpiler_name {
-            return Some(ReactComponentInfo { span, is_context: false, name: None });
-        }
+    // Anonymous class
+    if ignore_transpiler_name {
+        return Some(ReactComponentInfo { span, is_context: false, name: None });
+    }
 
-        if extends_react_component(class) {
-            return Some(ReactComponentInfo { span, is_context: false, name: None });
-        }
+    if extends_react_component(class) {
+        return Some(ReactComponentInfo { span, is_context: false, name: None });
     }
 
     None
@@ -891,6 +883,18 @@ fn test() {
         (
             "
                     class Hello extends React.Component {
+                      render() {
+                        return <div>Hello {this.props.name}</div>;
+                      }
+                    }
+                    Hello.displayName = 'Hello'
+                  ",
+            Some(serde_json::json!([{ "ignoreTranspilerName": true }])),
+            None,
+        ),
+        (
+            "
+                    export default class Hello extends React.Component {
                       render() {
                         return <div>Hello {this.props.name}</div>;
                       }
