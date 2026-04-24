@@ -54,6 +54,7 @@ pub(crate) mod eslint {
     pub mod default_param_last;
     pub mod eqeqeq;
     pub mod for_direction;
+    pub mod func_name_matching;
     pub mod func_names;
     pub mod func_style;
     pub mod getter_return;

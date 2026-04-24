@@ -22,6 +22,7 @@ pub use crate::rules::eslint::default_case_last::DefaultCaseLast as EslintDefaul
 pub use crate::rules::eslint::default_param_last::DefaultParamLast as EslintDefaultParamLast;
 pub use crate::rules::eslint::eqeqeq::Eqeqeq as EslintEqeqeq;
 pub use crate::rules::eslint::for_direction::ForDirection as EslintForDirection;
+pub use crate::rules::eslint::func_name_matching::FuncNameMatching as EslintFuncNameMatching;
 pub use crate::rules::eslint::func_names::FuncNames as EslintFuncNames;
 pub use crate::rules::eslint::func_style::FuncStyle as EslintFuncStyle;
 pub use crate::rules::eslint::getter_return::GetterReturn as EslintGetterReturn;
@@ -787,6 +788,7 @@ pub enum RuleEnum {
     EslintDefaultParamLast(EslintDefaultParamLast),
     EslintEqeqeq(EslintEqeqeq),
     EslintForDirection(EslintForDirection),
+    EslintFuncNameMatching(EslintFuncNameMatching),
     EslintFuncNames(EslintFuncNames),
     EslintFuncStyle(EslintFuncStyle),
     EslintGetterReturn(EslintGetterReturn),
@@ -1516,7 +1518,8 @@ const ESLINT_DEFAULT_CASE_LAST_ID: usize = ESLINT_DEFAULT_CASE_ID + 1usize;
 const ESLINT_DEFAULT_PARAM_LAST_ID: usize = ESLINT_DEFAULT_CASE_LAST_ID + 1usize;
 const ESLINT_EQEQEQ_ID: usize = ESLINT_DEFAULT_PARAM_LAST_ID + 1usize;
 const ESLINT_FOR_DIRECTION_ID: usize = ESLINT_EQEQEQ_ID + 1usize;
-const ESLINT_FUNC_NAMES_ID: usize = ESLINT_FOR_DIRECTION_ID + 1usize;
+const ESLINT_FUNC_NAME_MATCHING_ID: usize = ESLINT_FOR_DIRECTION_ID + 1usize;
+const ESLINT_FUNC_NAMES_ID: usize = ESLINT_FUNC_NAME_MATCHING_ID + 1usize;
 const ESLINT_FUNC_STYLE_ID: usize = ESLINT_FUNC_NAMES_ID + 1usize;
 const ESLINT_GETTER_RETURN_ID: usize = ESLINT_FUNC_STYLE_ID + 1usize;
 const ESLINT_GROUPED_ACCESSOR_PAIRS_ID: usize = ESLINT_GETTER_RETURN_ID + 1usize;
@@ -2335,6 +2338,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => ESLINT_DEFAULT_PARAM_LAST_ID,
             Self::EslintEqeqeq(_) => ESLINT_EQEQEQ_ID,
             Self::EslintForDirection(_) => ESLINT_FOR_DIRECTION_ID,
+            Self::EslintFuncNameMatching(_) => ESLINT_FUNC_NAME_MATCHING_ID,
             Self::EslintFuncNames(_) => ESLINT_FUNC_NAMES_ID,
             Self::EslintFuncStyle(_) => ESLINT_FUNC_STYLE_ID,
             Self::EslintGetterReturn(_) => ESLINT_GETTER_RETURN_ID,
@@ -3175,6 +3179,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => EslintDefaultParamLast::NAME,
             Self::EslintEqeqeq(_) => EslintEqeqeq::NAME,
             Self::EslintForDirection(_) => EslintForDirection::NAME,
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::NAME,
             Self::EslintFuncNames(_) => EslintFuncNames::NAME,
             Self::EslintFuncStyle(_) => EslintFuncStyle::NAME,
             Self::EslintGetterReturn(_) => EslintGetterReturn::NAME,
@@ -4005,6 +4010,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => EslintDefaultParamLast::CATEGORY,
             Self::EslintEqeqeq(_) => EslintEqeqeq::CATEGORY,
             Self::EslintForDirection(_) => EslintForDirection::CATEGORY,
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::CATEGORY,
             Self::EslintFuncNames(_) => EslintFuncNames::CATEGORY,
             Self::EslintFuncStyle(_) => EslintFuncStyle::CATEGORY,
             Self::EslintGetterReturn(_) => EslintGetterReturn::CATEGORY,
@@ -4886,6 +4892,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => EslintDefaultParamLast::FIX,
             Self::EslintEqeqeq(_) => EslintEqeqeq::FIX,
             Self::EslintForDirection(_) => EslintForDirection::FIX,
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::FIX,
             Self::EslintFuncNames(_) => EslintFuncNames::FIX,
             Self::EslintFuncStyle(_) => EslintFuncStyle::FIX,
             Self::EslintGetterReturn(_) => EslintGetterReturn::FIX,
@@ -5721,6 +5728,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => EslintDefaultParamLast::documentation(),
             Self::EslintEqeqeq(_) => EslintEqeqeq::documentation(),
             Self::EslintForDirection(_) => EslintForDirection::documentation(),
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::documentation(),
             Self::EslintFuncNames(_) => EslintFuncNames::documentation(),
             Self::EslintFuncStyle(_) => EslintFuncStyle::documentation(),
             Self::EslintGetterReturn(_) => EslintGetterReturn::documentation(),
@@ -6837,6 +6845,8 @@ impl RuleEnum {
             }
             Self::EslintForDirection(_) => EslintForDirection::config_schema(generator)
                 .or_else(|| EslintForDirection::schema(generator)),
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::config_schema(generator)
+                .or_else(|| EslintFuncNameMatching::schema(generator)),
             Self::EslintFuncNames(_) => EslintFuncNames::config_schema(generator)
                 .or_else(|| EslintFuncNames::schema(generator)),
             Self::EslintFuncStyle(_) => EslintFuncStyle::config_schema(generator)
@@ -8834,6 +8844,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => "eslint",
             Self::EslintEqeqeq(_) => "eslint",
             Self::EslintForDirection(_) => "eslint",
+            Self::EslintFuncNameMatching(_) => "eslint",
             Self::EslintFuncNames(_) => "eslint",
             Self::EslintFuncStyle(_) => "eslint",
             Self::EslintGetterReturn(_) => "eslint",
@@ -9650,6 +9661,9 @@ impl RuleEnum {
             }
             Self::EslintForDirection(_) => {
                 Ok(Self::EslintForDirection(EslintForDirection::from_configuration(value)?))
+            }
+            Self::EslintFuncNameMatching(_) => {
+                Ok(Self::EslintFuncNameMatching(EslintFuncNameMatching::from_configuration(value)?))
             }
             Self::EslintFuncNames(_) => {
                 Ok(Self::EslintFuncNames(EslintFuncNames::from_configuration(value)?))
@@ -11897,6 +11911,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(rule) => rule.to_configuration(),
             Self::EslintEqeqeq(rule) => rule.to_configuration(),
             Self::EslintForDirection(rule) => rule.to_configuration(),
+            Self::EslintFuncNameMatching(rule) => rule.to_configuration(),
             Self::EslintFuncNames(rule) => rule.to_configuration(),
             Self::EslintFuncStyle(rule) => rule.to_configuration(),
             Self::EslintGetterReturn(rule) => rule.to_configuration(),
@@ -12629,6 +12644,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(rule) => rule.run(node, ctx),
             Self::EslintEqeqeq(rule) => rule.run(node, ctx),
             Self::EslintForDirection(rule) => rule.run(node, ctx),
+            Self::EslintFuncNameMatching(rule) => rule.run(node, ctx),
             Self::EslintFuncNames(rule) => rule.run(node, ctx),
             Self::EslintFuncStyle(rule) => rule.run(node, ctx),
             Self::EslintGetterReturn(rule) => rule.run(node, ctx),
@@ -13357,6 +13373,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(rule) => rule.run_once(ctx),
             Self::EslintEqeqeq(rule) => rule.run_once(ctx),
             Self::EslintForDirection(rule) => rule.run_once(ctx),
+            Self::EslintFuncNameMatching(rule) => rule.run_once(ctx),
             Self::EslintFuncNames(rule) => rule.run_once(ctx),
             Self::EslintFuncStyle(rule) => rule.run_once(ctx),
             Self::EslintGetterReturn(rule) => rule.run_once(ctx),
@@ -14089,6 +14106,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::EslintEqeqeq(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::EslintForDirection(rule) => rule.run_on_jest_node(jest_node, ctx),
+            Self::EslintFuncNameMatching(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::EslintFuncNames(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::EslintFuncStyle(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::EslintGetterReturn(rule) => rule.run_on_jest_node(jest_node, ctx),
@@ -14917,6 +14935,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(rule) => rule.should_run(ctx),
             Self::EslintEqeqeq(rule) => rule.should_run(ctx),
             Self::EslintForDirection(rule) => rule.should_run(ctx),
+            Self::EslintFuncNameMatching(rule) => rule.should_run(ctx),
             Self::EslintFuncNames(rule) => rule.should_run(ctx),
             Self::EslintFuncStyle(rule) => rule.should_run(ctx),
             Self::EslintGetterReturn(rule) => rule.should_run(ctx),
@@ -15651,6 +15670,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => EslintDefaultParamLast::IS_TSGOLINT_RULE,
             Self::EslintEqeqeq(_) => EslintEqeqeq::IS_TSGOLINT_RULE,
             Self::EslintForDirection(_) => EslintForDirection::IS_TSGOLINT_RULE,
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::IS_TSGOLINT_RULE,
             Self::EslintFuncNames(_) => EslintFuncNames::IS_TSGOLINT_RULE,
             Self::EslintFuncStyle(_) => EslintFuncStyle::IS_TSGOLINT_RULE,
             Self::EslintGetterReturn(_) => EslintGetterReturn::IS_TSGOLINT_RULE,
@@ -16695,6 +16715,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => EslintDefaultParamLast::VERSION,
             Self::EslintEqeqeq(_) => EslintEqeqeq::VERSION,
             Self::EslintForDirection(_) => EslintForDirection::VERSION,
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::VERSION,
             Self::EslintFuncNames(_) => EslintFuncNames::VERSION,
             Self::EslintFuncStyle(_) => EslintFuncStyle::VERSION,
             Self::EslintGetterReturn(_) => EslintGetterReturn::VERSION,
@@ -17578,6 +17599,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(_) => EslintDefaultParamLast::HAS_CONFIG,
             Self::EslintEqeqeq(_) => EslintEqeqeq::HAS_CONFIG,
             Self::EslintForDirection(_) => EslintForDirection::HAS_CONFIG,
+            Self::EslintFuncNameMatching(_) => EslintFuncNameMatching::HAS_CONFIG,
             Self::EslintFuncNames(_) => EslintFuncNames::HAS_CONFIG,
             Self::EslintFuncStyle(_) => EslintFuncStyle::HAS_CONFIG,
             Self::EslintGetterReturn(_) => EslintGetterReturn::HAS_CONFIG,
@@ -18484,6 +18506,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(rule) => rule.types_info(),
             Self::EslintEqeqeq(rule) => rule.types_info(),
             Self::EslintForDirection(rule) => rule.types_info(),
+            Self::EslintFuncNameMatching(rule) => rule.types_info(),
             Self::EslintFuncNames(rule) => rule.types_info(),
             Self::EslintFuncStyle(rule) => rule.types_info(),
             Self::EslintGetterReturn(rule) => rule.types_info(),
@@ -19212,6 +19235,7 @@ impl RuleEnum {
             Self::EslintDefaultParamLast(rule) => rule.run_info(),
             Self::EslintEqeqeq(rule) => rule.run_info(),
             Self::EslintForDirection(rule) => rule.run_info(),
+            Self::EslintFuncNameMatching(rule) => rule.run_info(),
             Self::EslintFuncNames(rule) => rule.run_info(),
             Self::EslintFuncStyle(rule) => rule.run_info(),
             Self::EslintGetterReturn(rule) => rule.run_info(),
@@ -19962,6 +19986,7 @@ pub static RULES: std::sync::LazyLock<Vec<RuleEnum>> = std::sync::LazyLock::new(
         RuleEnum::EslintDefaultParamLast(EslintDefaultParamLast::default()),
         RuleEnum::EslintEqeqeq(EslintEqeqeq::default()),
         RuleEnum::EslintForDirection(EslintForDirection::default()),
+        RuleEnum::EslintFuncNameMatching(EslintFuncNameMatching::default()),
         RuleEnum::EslintFuncNames(EslintFuncNames::default()),
         RuleEnum::EslintFuncStyle(EslintFuncStyle::default()),
         RuleEnum::EslintGetterReturn(EslintGetterReturn::default()),
