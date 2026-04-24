@@ -57,7 +57,7 @@ enum FuncNameMatchingMode {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct FuncNameMatchingConfig {
     #[serde(default)]
     /// If `considerPropertyDescriptor` is set to `true`, the check will take into account the use of `Object.create`, `Object.defineProperty`, `Object.defineProperties`, and `Reflect.defineProperty`.
