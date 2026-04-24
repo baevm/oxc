@@ -240,7 +240,7 @@ impl Rule for FuncNameMatching {
                 };
                 let Some(func_name) = function_expression_name(init) else { return };
 
-                self.report_if_should_warn(name, func_name, false, ctx);
+                self.report_if_should_warn(name, &func_name, false, ctx);
             }
             AstKind::AssignmentExpression(assign_expr) => {
                 let Some(func_name) = function_expression_name(&assign_expr.right) else { return };
@@ -257,7 +257,7 @@ impl Rule for FuncNameMatching {
                     return;
                 }
 
-                self.report_if_should_warn(name, func_name, is_property, ctx);
+                self.report_if_should_warn(name, &func_name, is_property, ctx);
             }
             AstKind::ObjectProperty(property) => {
                 self.check_object_property(property, node, ctx);
@@ -281,7 +281,7 @@ impl FuncNameMatching {
     fn report_if_should_warn(
         &self,
         name: &str,
-        func_name: FunctionName<'_>,
+        func_name: &FunctionName<'_>,
         is_property: bool,
         ctx: &LintContext,
     ) {
@@ -309,22 +309,22 @@ impl FuncNameMatching {
             let Some(property_name) = property.key.static_name() else { return };
 
             if self.1.consider_property_descriptor && property_name == "value" {
-                match self.property_descriptor_name(node, ctx) {
+                match property_descriptor_name(node, ctx) {
                     DescriptorName::Name(descriptor_name) => {
                         self.report_if_should_warn(
                             descriptor_name.as_ref(),
-                            function_name,
+                            &function_name,
                             true,
                             ctx,
                         );
                     }
                     DescriptorName::Unresolved => {}
                     DescriptorName::NotDescriptor => {
-                        self.report_if_should_warn("value", function_name, true, ctx);
+                        self.report_if_should_warn("value", &function_name, true, ctx);
                     }
                 }
             } else {
-                self.report_if_should_warn(property_name.as_ref(), function_name, true, ctx);
+                self.report_if_should_warn(property_name.as_ref(), &function_name, true, ctx);
             }
 
             return;
@@ -333,7 +333,7 @@ impl FuncNameMatching {
         if let Some(property_name) = string_literal_key_name(&property.key)
             && is_valid_identifier(property_name)
         {
-            self.report_if_should_warn(property_name, function_name, true, ctx);
+            self.report_if_should_warn(property_name, &function_name, true, ctx);
         }
     }
 
@@ -348,78 +348,73 @@ impl FuncNameMatching {
         if property_key_is_identifier(&property.key) && !property.computed {
             let Some(property_name) = property.key.static_name() else { return };
 
-            self.report_if_should_warn(property_name.as_ref(), function_name, true, ctx);
+            self.report_if_should_warn(property_name.as_ref(), &function_name, true, ctx);
             return;
         }
 
         if let Some(property_name) = string_literal_key_name(&property.key)
             && is_valid_identifier(property_name)
         {
-            self.report_if_should_warn(property_name, function_name, true, ctx);
+            self.report_if_should_warn(property_name, &function_name, true, ctx);
         }
     }
+}
 
-    fn property_descriptor_name<'a>(
-        &self,
-        node: &AstNode<'a>,
-        ctx: &LintContext<'a>,
-    ) -> DescriptorName<'a> {
-        let mut ancestors = ctx.nodes().ancestors(node.id());
+fn property_descriptor_name<'a>(node: &AstNode<'a>, ctx: &LintContext<'a>) -> DescriptorName<'a> {
+    let mut ancestors = ctx.nodes().ancestors(node.id());
 
-        let Some(parent) = ancestors.next() else {
-            return DescriptorName::NotDescriptor;
-        };
-        let AstKind::ObjectExpression(_) = parent.kind() else {
-            return DescriptorName::NotDescriptor;
-        };
-        let Some(grandparent) = ancestors.next() else {
-            return DescriptorName::NotDescriptor;
-        };
+    let Some(parent) = ancestors.next() else {
+        return DescriptorName::NotDescriptor;
+    };
+    let AstKind::ObjectExpression(_) = parent.kind() else {
+        return DescriptorName::NotDescriptor;
+    };
+    let Some(grandparent) = ancestors.next() else {
+        return DescriptorName::NotDescriptor;
+    };
 
-        match grandparent.kind() {
-            AstKind::CallExpression(call_expr)
-                if is_property_call(call_expr, "Object", "defineProperty")
-                    || is_property_call(call_expr, "Reflect", "defineProperty") =>
-            {
-                call_expr
-                    .arguments
-                    .get(1)
-                    .and_then(string_literal_argument)
-                    .map_or(DescriptorName::Unresolved, |name| DescriptorName::Name(name.into()))
-            }
-            AstKind::ObjectProperty(descriptor_property) => {
-                if descriptor_property.computed
-                    || !property_key_is_identifier(&descriptor_property.key)
-                {
-                    return DescriptorName::Unresolved;
-                }
-
-                let Some(properties_object) = ancestors.next() else {
-                    return DescriptorName::NotDescriptor;
-                };
-                let AstKind::ObjectExpression(_) = properties_object.kind() else {
-                    return DescriptorName::NotDescriptor;
-                };
-                let Some(call) = ancestors.next() else {
-                    return DescriptorName::NotDescriptor;
-                };
-                let AstKind::CallExpression(call_expr) = call.kind() else {
-                    return DescriptorName::NotDescriptor;
-                };
-
-                if is_property_call(call_expr, "Object", "defineProperties")
-                    || is_property_call(call_expr, "Object", "create")
-                {
-                    descriptor_property
-                        .key
-                        .static_name()
-                        .map_or(DescriptorName::Unresolved, DescriptorName::Name)
-                } else {
-                    DescriptorName::NotDescriptor
-                }
-            }
-            _ => DescriptorName::NotDescriptor,
+    match grandparent.kind() {
+        AstKind::CallExpression(call_expr)
+            if is_property_call(call_expr, "Object", "defineProperty")
+                || is_property_call(call_expr, "Reflect", "defineProperty") =>
+        {
+            call_expr
+                .arguments
+                .get(1)
+                .and_then(string_literal_argument)
+                .map_or(DescriptorName::Unresolved, |name| DescriptorName::Name(name.into()))
         }
+        AstKind::ObjectProperty(descriptor_property) => {
+            if descriptor_property.computed || !property_key_is_identifier(&descriptor_property.key)
+            {
+                return DescriptorName::Unresolved;
+            }
+
+            let Some(properties_object) = ancestors.next() else {
+                return DescriptorName::NotDescriptor;
+            };
+            let AstKind::ObjectExpression(_) = properties_object.kind() else {
+                return DescriptorName::NotDescriptor;
+            };
+            let Some(call) = ancestors.next() else {
+                return DescriptorName::NotDescriptor;
+            };
+            let AstKind::CallExpression(call_expr) = call.kind() else {
+                return DescriptorName::NotDescriptor;
+            };
+
+            if is_property_call(call_expr, "Object", "defineProperties")
+                || is_property_call(call_expr, "Object", "create")
+            {
+                descriptor_property
+                    .key
+                    .static_name()
+                    .map_or(DescriptorName::Unresolved, DescriptorName::Name)
+            } else {
+                DescriptorName::NotDescriptor
+            }
+        }
+        _ => DescriptorName::NotDescriptor,
     }
 }
 
