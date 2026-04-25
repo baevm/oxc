@@ -12,8 +12,8 @@ use super::bumpalo_alloc::AllocErr;
 use crate::tracking::AllocationStats;
 
 use super::{
-    Arena, CHUNK_ALIGN, CHUNK_FOOTER_SIZE, ChunkFooter, EMPTY_CHUNK,
-    utils::{layout_from_size_align, oom, round_up_to},
+    Arena, CHUNK_ALIGN, CHUNK_FOOTER_SIZE, ChunkFooter, EMPTY_CHUNK_FOOTER,
+    utils::{is_pointer_aligned_to, layout_from_size_align, oom, round_up_to},
 };
 
 /// The typical page size these days.
@@ -82,22 +82,9 @@ impl Arena<1> {
     /// # use oxc_allocator::arena::Arena;
     /// let arena = Arena::new();
     /// ```
+    #[inline] // Because it's very cheap
     pub fn new() -> Self {
-        Self::with_capacity(0)
-    }
-
-    /// Attempt to construct a new arena to allocate into.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use oxc_allocator::arena::Arena;
-    /// let arena = Arena::try_new();
-    /// # let _ = arena.unwrap();
-    /// ```
-    #[expect(clippy::missing_errors_doc, reason = "`try_with_capacity(0)` always returns `Ok`")]
-    pub fn try_new() -> Result<Self, AllocErr> {
-        Arena::try_with_capacity(0)
+        Self::with_min_align()
     }
 
     /// Construct a new arena with the specified byte capacity to allocate into.
@@ -112,8 +99,9 @@ impl Arena<1> {
     /// # Panics
     ///
     /// Panics if allocating the initial capacity fails.
+    #[inline] // Because it just delegates
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::try_with_capacity(capacity).unwrap_or_else(|_| oom())
+        Self::with_min_align_and_capacity(capacity)
     }
 
     /// Attempt to construct a new arena with the specified byte capacity to allocate into.
@@ -140,6 +128,7 @@ impl Arena<1> {
     /// 3. The underlying global allocator fails to allocate the initial chunk.
     ///
     /// When `capacity` is `0`, no allocation is performed, and `Ok` is always returned.
+    #[inline] // Because it just delegates
     pub fn try_with_capacity(capacity: usize) -> Result<Self, AllocErr> {
         Self::try_with_min_align_and_capacity(capacity)
     }
@@ -163,7 +152,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
     /// let arena = ArenaAlign8::with_min_align();
     /// for x in 0..u8::MAX {
     ///     let x = arena.alloc(x);
-    ///     assert_eq!((x as *mut _ as usize) % 8, 0, "x is aligned to 8");
+    ///     assert!(std::ptr::from_ref(x).addr().is_multiple_of(8), "x is aligned to 8");
     /// }
     /// ```
     //
@@ -171,8 +160,9 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
     // the `impl Arena` block with no const `MIN_ALIGN` parameter), and because we don't want to force everyone
     // to specify a minimum alignment with `Arena::new()` et al, we have a separate constructor
     // for specifying the minimum alignment.
+    #[inline] // Because it's very cheap
     pub fn with_min_align() -> Self {
-        Self::new_impl(EMPTY_CHUNK.get())
+        Self::new_impl(EMPTY_CHUNK_FOOTER.get())
     }
 
     /// Create a new `Arena` that enforces a minimum alignment, and starts with room for at least `capacity` bytes.
@@ -192,7 +182,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
     /// let mut arena = ArenaAlign8::with_min_align_and_capacity(8 * 100);
     /// for x in 0..100_u64 {
     ///     let x = arena.alloc(x);
-    ///     assert_eq!((x as *mut _ as usize) % 8, 0, "x is aligned to 8");
+    ///     assert!(std::ptr::from_ref(x).addr().is_multiple_of(8), "x is aligned to 8");
     /// }
     /// assert_eq!(
     ///     arena.iter_allocated_chunks().count(), 1,
@@ -224,7 +214,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
     /// let mut arena = ArenaAlign8::try_with_min_align_and_capacity(8 * 100)?;
     /// for x in 0..100_u64 {
     ///     let x = arena.alloc(x);
-    ///     assert_eq!((x as *mut _ as usize) % 8, 0, "x is aligned to 8");
+    ///     assert!(std::ptr::from_ref(x).addr().is_multiple_of(8), "x is aligned to 8");
     /// }
     /// assert_eq!(
     ///     arena.iter_allocated_chunks().count(), 1,
@@ -246,7 +236,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
     /// When `capacity` is 0, no allocation is performed, and `Ok` is always returned.
     pub fn try_with_min_align_and_capacity(capacity: usize) -> Result<Self, AllocErr> {
         if capacity == 0 {
-            return Ok(Self::new_impl(EMPTY_CHUNK.get()));
+            return Ok(Self::with_min_align());
         }
 
         let layout = layout_from_size_align(capacity, MIN_ALIGN)?;
@@ -258,7 +248,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
                 // to avoid `Arena::with_capacity` allocating 16 KiB even when requested `capacity` is much smaller.
                 Self::new_chunk_memory_details(Some(capacity), layout).ok_or(AllocErr)?,
                 layout,
-                EMPTY_CHUNK.get(),
+                EMPTY_CHUNK_FOOTER.get(),
             )
             .ok_or(AllocErr)?
         };
@@ -328,8 +318,8 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
                 round_up_to(new_size_without_footer + OVERHEAD, TYPICAL_PAGE_SIZE)? - OVERHEAD;
         }
 
-        debug_assert_eq!(align % CHUNK_ALIGN, 0);
-        debug_assert_eq!(new_size_without_footer % CHUNK_ALIGN, 0);
+        debug_assert!(align.is_multiple_of(CHUNK_ALIGN));
+        debug_assert!(new_size_without_footer.is_multiple_of(CHUNK_ALIGN));
         let size = new_size_without_footer
             .checked_add(CHUNK_FOOTER_SIZE)
             .unwrap_or_else(allocation_size_overflow);
@@ -356,8 +346,8 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
 
             // The `ChunkFooter` is at the end of the chunk
             let footer_ptr = start_ptr.as_ptr().add(new_size_without_footer);
-            debug_assert_eq!((start_ptr.as_ptr() as usize) % align, 0);
-            debug_assert_eq!(footer_ptr as usize % CHUNK_ALIGN, 0);
+            debug_assert!(is_pointer_aligned_to(start_ptr.as_ptr(), align));
+            debug_assert!(is_pointer_aligned_to(footer_ptr, CHUNK_ALIGN));
             #[expect(
                 clippy::cast_ptr_alignment,
                 reason = "footer_ptr is aligned to CHUNK_ALIGN, which is == align_of::<ChunkFooter>()"
@@ -367,7 +357,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
             // Initial cursor sits at the footer, which is the end of the allocatable region.
             // The footer is aligned on `CHUNK_ALIGN`, which is `>= MIN_ALIGN`, so this is already aligned to `MIN_ALIGN`.
             let cursor_ptr = NonNull::new_unchecked(footer_ptr.cast::<u8>());
-            debug_assert_eq!(cursor_ptr.as_ptr() as usize % MIN_ALIGN, 0);
+            debug_assert!(is_pointer_aligned_to(cursor_ptr.as_ptr(), MIN_ALIGN));
 
             ptr::write(
                 footer_ptr,
@@ -385,6 +375,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
 }
 
 impl<const MIN_ALIGN: usize> Default for Arena<MIN_ALIGN> {
+    #[inline] // Because it just delegates
     fn default() -> Self {
         Self::with_min_align()
     }

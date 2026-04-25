@@ -4,9 +4,7 @@ use phf::phf_set;
 
 use oxc_span::SourceType;
 
-use super::utils;
-
-pub enum FormatFileStrategy {
+pub enum FormatStrategy {
     OxcFormatter {
         path: PathBuf,
         source_type: SourceType,
@@ -26,13 +24,28 @@ pub enum FormatFileStrategy {
     },
 }
 
-impl TryFrom<PathBuf> for FormatFileStrategy {
-    type Error = ();
+/// Builder for creating [`FormatStrategy`] from file paths.
+///
+/// Carries per-scope configuration (e.g. experimental language flags)
+/// that influences which files are supported and how they are formatted.
+///
+/// Created from [`super::ConfigResolver::strategy_builder()`] for CLI/LSP paths,
+/// or via [`FormatStrategyBuilder::default()`] for the NAPI API path.
+#[derive(Debug, Default)]
+pub struct FormatStrategyBuilder {
+    // Future: experimental_svelte, experimental_astro, etc.
+    _private: (),
+}
 
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
+impl FormatStrategyBuilder {
+    /// Build a [`FormatStrategy`] from a file path.
+    ///
+    /// Returns `Ok` if the file type is supported, `Err(())` otherwise.
+    #[expect(clippy::unused_self)] // Will use `self` when experimental flags are added
+    pub fn build(&self, path: PathBuf) -> Result<FormatStrategy, ()> {
         // Check JS/TS files first
         if let Some(source_type) = get_oxc_formatter_source_type(&path) {
-            return Ok(Self::OxcFormatter { path, source_type });
+            return Ok(FormatStrategy::OxcFormatter { path, source_type });
         }
 
         // Extract file_name and extension once for all subsequent checks
@@ -47,25 +60,28 @@ impl TryFrom<PathBuf> for FormatFileStrategy {
 
         // Then TOML files
         if is_toml_file(file_name) {
-            return Ok(Self::OxfmtToml { path });
+            return Ok(FormatStrategy::OxfmtToml { path });
         }
 
         // Then external formatter files
         // `package.json` is special: sorted then formatted
         if file_name == "package.json" {
-            return Ok(Self::ExternalFormatterPackageJson { path, parser_name: "json-stringify" });
+            return Ok(FormatStrategy::ExternalFormatterPackageJson {
+                path,
+                parser_name: "json-stringify",
+            });
         }
 
         let extension = path.extension().and_then(|ext| ext.to_str());
         if let Some(parser_name) = get_external_parser_name(file_name, extension) {
-            return Ok(Self::ExternalFormatter { path, parser_name });
+            return Ok(FormatStrategy::ExternalFormatter { path, parser_name });
         }
 
         Err(())
     }
 }
 
-impl FormatFileStrategy {
+impl FormatStrategy {
     #[cfg(not(feature = "napi"))]
     pub fn can_format_without_external(&self) -> bool {
         matches!(self, Self::OxcFormatter { .. } | Self::OxfmtToml { .. })
@@ -97,21 +113,6 @@ impl FormatFileStrategy {
             self,
             Self::ExternalFormatter { parser_name, .. } if OXFMT_PARSERS.contains(parser_name)
         )
-    }
-
-    /// Resolve the stored path to an absolute path using the given `cwd`.
-    /// CLI file walk already provides absolute paths,
-    /// but stdin and NAPI entry points may receive relative paths from user input.
-    pub fn resolve_relative_path(mut self, cwd: &Path) -> Self {
-        match &mut self {
-            Self::OxcFormatter { path, .. }
-            | Self::OxfmtToml { path }
-            | Self::ExternalFormatter { path, .. }
-            | Self::ExternalFormatterPackageJson { path, .. } => {
-                *path = utils::normalize_relative_path(cwd, path);
-            }
-        }
-        self
     }
 }
 
@@ -186,7 +187,7 @@ static TOML_FILENAMES: phf::Set<&'static str> = phf_set! {
 /// See also `prettier --support-info | jq '.languages[]'`
 fn get_external_parser_name(file_name: &str, extension: Option<&str>) -> Option<&'static str> {
     // JSON and variants
-    // NOTE: `package.json` is handled separately in `FormatFileStrategy::try_from()`
+    // NOTE: `package.json` is handled separately in `FormatStrategyBuilder::build()`
     if file_name == "composer.json" || extension == Some("importmap") {
         return Some("json-stringify");
     }
@@ -492,7 +493,7 @@ mod tests {
     #[test]
     fn test_get_external_parser_name() {
         let test_cases = vec![
-            // JSON (NOTE: `package.json` is handled in TryFrom, not here)
+            // JSON (NOTE: `package.json` is handled in FormatStrategyBuilder::build, not here)
             ("config.importmap", Some("json-stringify")),
             ("data.json", Some("json")),
             ("schema.avsc", Some("json")),
@@ -549,11 +550,12 @@ mod tests {
 
     #[test]
     fn test_package_json_is_special() {
-        let source = FormatFileStrategy::try_from(PathBuf::from("package.json")).unwrap();
-        assert!(matches!(source, FormatFileStrategy::ExternalFormatterPackageJson { .. }));
+        let source = FormatStrategyBuilder::default().build(PathBuf::from("package.json")).unwrap();
+        assert!(matches!(source, FormatStrategy::ExternalFormatterPackageJson { .. }));
 
-        let source = FormatFileStrategy::try_from(PathBuf::from("composer.json")).unwrap();
-        assert!(matches!(source, FormatFileStrategy::ExternalFormatter { .. }));
+        let source =
+            FormatStrategyBuilder::default().build(PathBuf::from("composer.json")).unwrap();
+        assert!(matches!(source, FormatStrategy::ExternalFormatter { .. }));
     }
 
     #[test]
@@ -569,9 +571,9 @@ mod tests {
         ];
 
         for file_name in toml_files {
-            let result = FormatFileStrategy::try_from(PathBuf::from(file_name));
+            let result = FormatStrategyBuilder::default().build(PathBuf::from(file_name));
             assert!(
-                matches!(result, Ok(FormatFileStrategy::OxfmtToml { .. })),
+                matches!(result, Ok(FormatStrategy::OxfmtToml { .. })),
                 "`{file_name}` should be detected as TOML"
             );
         }
@@ -580,7 +582,7 @@ mod tests {
         let excluded_files = vec!["Cargo.lock", "poetry.lock", "pdm.lock", "uv.lock", "Gopkg.lock"];
 
         for file_name in excluded_files {
-            let result = FormatFileStrategy::try_from(PathBuf::from(file_name));
+            let result = FormatStrategyBuilder::default().build(PathBuf::from(file_name));
             assert!(result.is_err(), "`{file_name}` should be excluded (lock file)");
         }
     }

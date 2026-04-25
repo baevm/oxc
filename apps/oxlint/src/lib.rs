@@ -2,7 +2,6 @@
 #![cfg_attr(not(feature = "napi"), allow(dead_code))]
 
 mod command;
-mod config_discovery;
 mod config_loader;
 mod init;
 mod lint;

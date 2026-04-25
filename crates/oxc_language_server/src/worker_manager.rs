@@ -216,9 +216,7 @@ impl WorkerManager {
 
     // SAFETY: call this method only when you are sure, that we are not in `DynamicWithWorkspaces` mode,
     // or else it will return [`None`] for URIs that are outside of any workspace.
-    #[expect(clippy::unused_self)] // we will use it later
     fn find_worker_for_uri<'a>(
-        &self,
         workers: &'a [WorkspaceWorker],
         uri: &Uri,
     ) -> Option<&'a WorkspaceWorker> {
@@ -351,7 +349,7 @@ impl WorkerManager {
         // Fast path: avoid a write lock when a suitable worker already exists.
         {
             let workers = self.workers.read().await;
-            if self.find_worker_for_uri(&workers, uri).is_some() {
+            if Self::find_worker_for_uri(&workers, uri).is_some() {
                 return None;
             }
         }
@@ -368,7 +366,7 @@ impl WorkerManager {
         let mut worker = Some(worker);
         {
             let mut workers = self.workers.write().await;
-            if self.is_single_file_mode() && self.find_worker_for_uri(&workers, uri).is_none() {
+            if self.is_single_file_mode() && Self::find_worker_for_uri(&workers, uri).is_none() {
                 workers.push(worker.take().unwrap());
             }
         }
@@ -408,7 +406,7 @@ impl WorkerManager {
             let mut workers = self.workers.write().await;
 
             let has_open_files = open_uris.iter().any(|open_uri| {
-                self.find_worker_for_uri(&workers, open_uri)
+                Self::find_worker_for_uri(&workers, open_uri)
                     .is_some_and(|w| w.get_root_uri() == worker_root_uri)
             });
 

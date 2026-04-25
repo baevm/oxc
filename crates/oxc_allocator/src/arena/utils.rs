@@ -8,14 +8,13 @@ pub use super::bumpalo_alloc::AllocErr;
 pub fn is_pointer_aligned_to<T>(ptr: *mut T, align: usize) -> bool {
     debug_assert!(align.is_power_of_two());
 
-    let addr = ptr as usize;
+    let addr = ptr.addr();
     let aligned_addr = round_down_to(addr, align);
     addr == aligned_addr
 }
 
 #[inline]
 pub const fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
-    debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     match n.checked_add(divisor - 1) {
         Some(x) => Some(x & !(divisor - 1)),
@@ -37,7 +36,6 @@ pub unsafe fn round_up_to_unchecked(n: usize, divisor: usize) -> usize {
 
 #[inline]
 pub fn round_down_to(n: usize, divisor: usize) -> usize {
-    debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     n & !(divisor - 1)
 }
@@ -54,18 +52,16 @@ pub fn round_down_to(n: usize, divisor: usize) -> usize {
 /// See comment in that method for more details.
 #[inline]
 pub fn round_mut_ptr_down_to(ptr: *mut u8, divisor: usize) -> *mut u8 {
-    debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
-    ptr.wrapping_sub(ptr as usize & (divisor - 1))
+    ptr.wrapping_sub(ptr.addr() & (divisor - 1))
 }
 
 #[inline]
 pub unsafe fn round_mut_ptr_up_to_unchecked(ptr: *mut u8, divisor: usize) -> *mut u8 {
-    debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     unsafe {
-        let aligned = round_up_to_unchecked(ptr as usize, divisor);
-        let delta = aligned - (ptr as usize);
+        let aligned = round_up_to_unchecked(ptr.addr(), divisor);
+        let delta = aligned - ptr.addr();
         ptr.add(delta)
     }
 }

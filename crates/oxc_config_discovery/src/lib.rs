@@ -1,6 +1,19 @@
-use std::path::{Path, PathBuf};
+//! Shared config file discovery for Oxc command-line tools.
+
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use oxc_diagnostics::OxcDiagnostic;
+
+/// Return `true` when `path` uses a JavaScript or TypeScript config extension.
+pub fn is_js_config_path(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(OsStr::to_str),
+        Some("js" | "mjs" | "cjs" | "ts" | "cts" | "mts")
+    )
+}
 
 /// A supported configuration file discovered on disk.
 ///
@@ -16,6 +29,7 @@ pub enum DiscoveredConfigFile {
 }
 
 impl DiscoveredConfigFile {
+    /// Return the filesystem path for the discovered config file.
     pub fn path(&self) -> &Path {
         match self {
             Self::Json(path) | Self::Jsonc(path) | Self::Js(path) | Self::Vite(path) => path,
@@ -27,6 +41,7 @@ impl DiscoveredConfigFile {
 ///
 /// Callers provide the names instead of hardcoding them in the discovery logic
 /// so the same matcher can be reused for different config naming schemes.
+#[derive(Debug, Clone, Copy)]
 pub struct ConfigFileNames {
     /// JSON config file name, such as `.oxlintrc.json`.
     pub json: &'static str,
@@ -39,9 +54,10 @@ pub struct ConfigFileNames {
 }
 
 /// Finds supported config files using a caller-provided set of file names.
+#[derive(Debug, Clone, Copy)]
 pub struct ConfigDiscovery {
-    pub config_file_names: ConfigFileNames,
-    pub vite_plus_mode: bool,
+    config_file_names: ConfigFileNames,
+    vite_plus_mode: bool,
 }
 
 impl ConfigDiscovery {
@@ -50,10 +66,28 @@ impl ConfigDiscovery {
         Self { config_file_names, vite_plus_mode }
     }
 
+    /// Return supported config file names in discovery order.
+    ///
+    /// In Vite+ mode, only the configured Vite file name is returned. In
+    /// regular mode, JSON, JSONC, and JavaScript/TypeScript config names are
+    /// returned in that order.
+    pub fn config_file_names(&self) -> Vec<&'static str> {
+        if self.vite_plus_mode {
+            return vec![self.config_file_names.vite];
+        }
+
+        vec![self.config_file_names.json, self.config_file_names.jsonc, self.config_file_names.js]
+    }
+
     /// Find the only supported config file directly inside `dir`.
     ///
     /// Returns `Ok(None)` when no config file exists, and returns
     /// [`ConfigConflict`] when multiple configs are found.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigConflict`] when more than one supported config file is
+    /// found directly inside `dir`.
     pub fn find_unique_config_in_directory(
         &self,
         dir: &Path,
@@ -62,36 +96,36 @@ impl ConfigDiscovery {
 
         match configs.len() {
             0 => Ok(None),
-            1 => Ok(Some(configs.into_iter().next().unwrap())),
+            1 => Ok(configs.into_iter().next()),
             _ => Err(ConfigConflict::new(dir.to_path_buf(), configs)),
         }
     }
 
     /// Find all supported config files directly inside `dir`.
+    ///
+    /// In Vite+ mode, only the configured Vite file name is recognized. In
+    /// regular mode, JSON, JSONC, and JavaScript/TypeScript config names are
+    /// returned in that order when they exist.
     pub fn find_configs_in_directory(&self, dir: &Path) -> Vec<DiscoveredConfigFile> {
         if self.vite_plus_mode {
             let vite_path = dir.join(self.config_file_names.vite);
             if vite_path.is_file() {
-                return vec![DiscoveredConfigFile::Vite(vite_path)];
+                return self.discover_config_file(&vite_path).into_iter().collect();
             }
             return Vec::new();
         }
 
         let mut configs = Vec::new();
-
-        let json_path = dir.join(self.config_file_names.json);
-        if json_path.is_file() {
-            configs.push(DiscoveredConfigFile::Json(json_path));
-        }
-
-        let jsonc_path = dir.join(self.config_file_names.jsonc);
-        if jsonc_path.is_file() {
-            configs.push(DiscoveredConfigFile::Jsonc(jsonc_path));
-        }
-
-        let js_path = dir.join(self.config_file_names.js);
-        if js_path.is_file() {
-            configs.push(DiscoveredConfigFile::Js(js_path));
+        for path in [
+            dir.join(self.config_file_names.json),
+            dir.join(self.config_file_names.jsonc),
+            dir.join(self.config_file_names.js),
+        ] {
+            if path.is_file()
+                && let Some(config) = self.discover_config_file(&path)
+            {
+                configs.push(config);
+            }
         }
 
         configs
@@ -126,8 +160,7 @@ impl ConfigDiscovery {
 
 /// Multiple supported config files were found in the same directory.
 ///
-/// Consumers should surface this as a user-facing configuration error. Use the
-/// [`From<ConfigConflict>`] implementation to convert it into an [`OxcDiagnostic`].
+/// Consumers should surface this as a user-facing configuration error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigConflict {
     /// Directory containing the conflicting config files.
@@ -137,6 +170,7 @@ pub struct ConfigConflict {
 }
 
 impl ConfigConflict {
+    /// Create a config conflict from a directory and the files discovered inside it.
     pub fn new(dir: PathBuf, configs: Vec<DiscoveredConfigFile>) -> Self {
         debug_assert!(
             configs.len() > 1,
@@ -144,23 +178,15 @@ impl ConfigConflict {
         );
         Self { dir, configs }
     }
-}
 
-impl ConfigConflict {
     fn message(&self) -> String {
-        let config_names = self.config_names();
+        let mut config_names = self.config_names();
 
         if config_names.is_empty() {
             return String::new();
         }
 
-        // if we are in cfg test, we need to sort config names to make sure the test is deterministic
-        #[cfg(any(test, feature = "testing"))]
-        let config_names = {
-            let mut sorted = config_names;
-            sorted.sort();
-            sorted
-        };
+        config_names.sort();
 
         let config_list = format_conflicting_config_names(&config_names);
         if config_names.len() == 2 {
@@ -182,8 +208,25 @@ impl ConfigConflict {
 
 impl From<ConfigConflict> for OxcDiagnostic {
     fn from(conflict: ConfigConflict) -> Self {
+        let mut config_names = conflict.config_names();
+        config_names.sort();
+
+        let note = if config_names.is_empty() {
+            "Only one config file is allowed per directory.".to_string()
+        } else {
+            let backticked_names =
+                config_names.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>();
+            let config_list = if backticked_names.len() == 2 {
+                format!("{} and {}", backticked_names[0], backticked_names[1])
+            } else {
+                let (last, backticked_names) = backticked_names.split_last().unwrap();
+                format!("{}, and {last}", backticked_names.join(", "))
+            };
+            format!("Only one of {config_list} is allowed per directory.")
+        };
+
         OxcDiagnostic::error(conflict.message())
-            .with_note("Only one of `.oxlintrc.json`, `.oxlintrc.jsonc`, or `oxlint.config.ts` is allowed per directory.")
+            .with_note(note)
             .with_help("Delete one of the configuration files.")
     }
 }
@@ -191,11 +234,29 @@ impl From<ConfigConflict> for OxcDiagnostic {
 fn format_conflicting_config_names(config_names: &[String]) -> String {
     debug_assert!(config_names.len() > 1);
 
-    let mut quoted_names = config_names.iter().map(|name| format!("'{name}'")).collect::<Vec<_>>();
+    let quoted_names = config_names.iter().map(|name| format!("'{name}'")).collect::<Vec<_>>();
     if quoted_names.len() == 2 {
         return format!("{} and {}", quoted_names[0], quoted_names[1]);
     }
 
-    let last = quoted_names.pop().unwrap();
+    let (last, quoted_names) = quoted_names.split_last().unwrap();
     format!("{}, and {last}", quoted_names.join(", "))
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::Path;
+
+    use super::is_js_config_path;
+
+    #[test]
+    fn test_is_js_config_path() {
+        assert!(is_js_config_path(Path::new("my-config.js")));
+        assert!(is_js_config_path(Path::new("my-config.cjs")));
+        assert!(is_js_config_path(Path::new("my-config.mjs")));
+        assert!(is_js_config_path(Path::new("my-config.ts")));
+        assert!(is_js_config_path(Path::new("my-config.cts")));
+        assert!(is_js_config_path(Path::new("my-config.mts")));
+        assert!(!is_js_config_path(Path::new("oxlint.config.json")));
+    }
 }

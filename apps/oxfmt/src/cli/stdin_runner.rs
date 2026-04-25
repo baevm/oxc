@@ -11,8 +11,8 @@ use super::{
     },
 };
 use crate::core::{
-    ConfigResolver, ExternalFormatter, FormatFileStrategy, FormatResult, JsConfigLoaderCb,
-    SourceFormatter, resolve_editorconfig_path, utils,
+    ConfigResolver, ExternalFormatter, FormatResult, JsConfigLoaderCb, SourceFormatter,
+    resolve_editorconfig_path, utils,
 };
 
 pub struct StdinRunner {
@@ -95,13 +95,8 @@ impl StdinRunner {
             }
         }
 
-        // Determine format strategy from filepath
-        let Ok(strategy) =
-            FormatFileStrategy::try_from(filepath).map(|s| s.resolve_relative_path(&cwd))
-        else {
-            utils::print_and_flush(stderr, "Unsupported file type for stdin-filepath\n");
-            return CliRunResult::InvalidOptionConfig;
-        };
+        // Resolve filepath to absolute for nested config resolution
+        let filepath = utils::normalize_relative_path(&cwd, &filepath);
 
         // Resolve nested config based on filepath's parent directory
         // (same as CLI direct file path behavior)
@@ -109,7 +104,7 @@ impl StdinRunner {
             config_options.config.is_none() && !config_options.disable_nested_config;
         if detect_nested {
             match resolve_file_scope_config(
-                strategy.path(),
+                &filepath,
                 config_resolver.config_dir(),
                 editorconfig_path.as_deref(),
                 Some(&self.js_config_loader),
@@ -125,6 +120,12 @@ impl StdinRunner {
                 }
             }
         }
+
+        // Determine format strategy using config-aware builder
+        let Ok(strategy) = config_resolver.strategy_builder().build(filepath) else {
+            utils::print_and_flush(stderr, "Unsupported file type for stdin-filepath\n");
+            return CliRunResult::InvalidOptionConfig;
+        };
 
         // Check if the file is ignored by global ignores or config's `ignorePatterns`
         let global_matchers = match resolve_ignore_paths(&cwd, &ignore_options.ignore_path)

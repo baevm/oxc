@@ -23,6 +23,7 @@ mod create;
 mod drop;
 mod utils;
 
+#[cfg(feature = "testing")]
 pub use bumpalo_alloc::AllocErr;
 use create::DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER;
 
@@ -239,28 +240,41 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
 // therefore prevent sending the `Arena` across threads until the borrows end.
 unsafe impl<const MIN_ALIGN: usize> Send for Arena<MIN_ALIGN> {}
 
+/// Footer containing details about a chunk of memory owned by an `Arena`.
+///
+/// This footer is written into the allocation at its very end.
+/// The chunk's bump cursor initially points to the `ChunkFooter`.
+/// i.e. The memory region which can be allocated into is `start_ptr..cursor_ptr`.
+///
+/// Chunks form a linked list with `Arena::current_chunk_footer_ptr` pointing to current chunk's footer,
+/// and each chunk's `ChunkFooter::previous_chunk_footer_ptr` pointing to the previous chunk's footer.
+/// The list ends with the canonical empty chunk footer `EMPTY_CHUNK_FOOTER`, whose `previous_chunk_footer_ptr`
+/// points to itself.
+///
+/// An empty `Arena`, which does not own any memory, has `Arena::current_chunk_footer_ptr` pointing to
+/// the canonical empty chunk footer `EMPTY_CHUNK_FOOTER`.
 #[repr(C, align(16))]
 #[derive(Debug)]
 struct ChunkFooter {
-    /// Pointer to the start of this chunk allocation.
-    /// This footer is always at the end of the chunk.
+    /// Pointer to the start of this chunk's memory.
     ///
-    /// Only used when deallocating chunks, and when iterating over chunks. Allocation methods use
-    /// `Arena::start_ptr` instead, to avoid the indirection through the footer.
+    /// This field is only used when deallocating chunks.
+    /// Allocation methods use `Arena::start_ptr` instead, which is the authoritative pointer for current chunk.
     start_ptr: NonNull<u8>,
 
-    /// The layout of this chunk's allocation.
+    /// The layout of this chunk's backing allocation.
     layout: Layout,
 
     /// Link to the previous chunk.
     ///
-    /// The last node in the `previous_chunk_footer_ptr` linked list is the canonical empty chunk,
+    /// The last node in the chunks linked list is the canonical empty chunk footer `EMPTY_CHUNK_FOOTER`,
     /// whose `previous_chunk_footer_ptr` link points to itself.
     previous_chunk_footer_ptr: Cell<NonNull<ChunkFooter>>,
 
-    /// Bump allocation cursor, valid only for retired (non-current) chunks. For the current chunk,
-    /// the authoritative cursor lives in `Arena::cursor_ptr`. This field is written when a chunk
-    /// is retired (in the slow path of allocation), so iteration over chunks can read it.
+    /// Bump allocation cursor, valid only for retired (non-current) chunks.
+    /// This field is written when a chunk is retired (when a new chunk is created).
+    /// Allocation methods use `Arena::cursor_ptr` instead, which is the authoritative pointer for current chunk.
+    /// This field is only used in `ChunkIter` and `ChunkRawIter` iterators.
     cursor_ptr: Cell<NonNull<u8>>,
 }
 
@@ -280,19 +294,18 @@ struct EmptyChunkFooter(ChunkFooter);
 
 unsafe impl Sync for EmptyChunkFooter {}
 
-static EMPTY_CHUNK: EmptyChunkFooter = EmptyChunkFooter(ChunkFooter {
+static EMPTY_CHUNK_FOOTER: EmptyChunkFooter = EmptyChunkFooter(ChunkFooter {
     // The start of the (empty) allocatable region for this chunk is itself
-    start_ptr: NonNull::from_ref(&EMPTY_CHUNK).cast::<u8>(),
+    start_ptr: NonNull::from_ref(&EMPTY_CHUNK_FOOTER).cast::<u8>(),
 
-    // This chunk is empty (except the foot itself)
+    // This chunk is empty (except the footer itself)
     layout: Layout::new::<ChunkFooter>(),
 
-    // Invariant: The last chunk footer in all `ChunkFooter::previous_chunk_footer_ptr` linked lists
-    // is the empty chunk footer, whose `previous_chunk_footer_ptr` points to itself
-    previous_chunk_footer_ptr: Cell::new(NonNull::from_ref(&EMPTY_CHUNK.0)),
+    // Points to itself as the previous chunk
+    previous_chunk_footer_ptr: Cell::new(NonNull::from_ref(&EMPTY_CHUNK_FOOTER.0)),
 
     // The end of the (empty) allocatable region for this chunk is also itself
-    cursor_ptr: Cell::new(NonNull::from_ref(&EMPTY_CHUNK).cast::<u8>()),
+    cursor_ptr: Cell::new(NonNull::from_ref(&EMPTY_CHUNK_FOOTER).cast::<u8>()),
 });
 
 impl EmptyChunkFooter {
@@ -304,6 +317,6 @@ impl EmptyChunkFooter {
 impl ChunkFooter {
     /// Returns `true` if this chunk is the empty chunk (end of the linked list).
     fn is_empty(&self) -> bool {
-        ptr::eq(self, EMPTY_CHUNK.get().as_ptr())
+        ptr::eq(self, EMPTY_CHUNK_FOOTER.get().as_ptr())
     }
 }

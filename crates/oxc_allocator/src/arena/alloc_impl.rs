@@ -221,7 +221,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
         //
         // For statically-known `layout.size()` (e.g. in `Arena::alloc`):
         // We inform compiler that `cursor_ptr` is always aligned to `MIN_ALIGN` with an unchecked assertion.
-        // Combined with `round_mut_ptr_down_to`'s implementation as `p.wrapping_sub(p as usize & (divisor - 1))`,
+        // Combined with `round_mut_ptr_down_to`'s implementation as `ptr.wrapping_sub(ptr.addr() & (divisor - 1))`,
         // LLVM's known-bits analysis can:
         //
         // * compute the `& (divisor - 1)` term as a constant, and
@@ -279,7 +279,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
         let align = max(layout.align(), MIN_ALIGN);
         let new_ptr = round_mut_ptr_down_to(new_ptr, align);
 
-        if new_ptr.addr().wrapping_sub(start_ptr.addr()) > (isize::MAX as usize) {
+        if new_ptr.addr().wrapping_sub(start_ptr.addr()) > isize::MAX as usize {
             return None;
         }
 
@@ -335,14 +335,17 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
 
             // Get a new chunk from the global allocator
             let current_footer_ptr = self.current_chunk_footer_ptr.get();
+
             let current_layout = current_footer_ptr.as_ref().layout;
+            let current_size_without_footer = current_layout.size() - CHUNK_FOOTER_SIZE;
 
             // By default, we want our new chunk to be about twice as big as the previous chunk.
             // If the global allocator refuses it, we try to divide it by half until it works
             // or the requested size is smaller than the default footer size.
             let min_new_chunk_size = layout.size().max(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
-            let mut base_size =
-                (current_layout.size() - CHUNK_FOOTER_SIZE).checked_mul(2)?.max(min_new_chunk_size);
+            // `current_size_without_footer * 2` cannot overflow because `Layout::size()` is always `<= isize::MAX`
+            let mut base_size = (current_size_without_footer * 2).max(min_new_chunk_size);
+
             let mut chunk_memory_details = iter::from_fn(|| {
                 if base_size >= min_new_chunk_size {
                     let size = base_size;
@@ -357,10 +360,10 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
                 Self::new_chunk(new_chunk_memory_details, layout, current_footer_ptr)
             })?;
 
-            debug_assert_eq!(
-                new_footer_ptr.as_ref().start_ptr.as_ptr() as usize % layout.align(),
-                0
-            );
+            debug_assert!(is_pointer_aligned_to(
+                new_footer_ptr.as_ref().start_ptr.as_ptr(),
+                layout.align()
+            ));
 
             // Sync `Arena::cursor_ptr` back to the retiring chunk's footer so iteration over chunks
             // can read its final cursor position later.
@@ -452,7 +455,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
         // This is how much space we would *actually* reclaim while satisfying the requested alignment
         let delta = round_down_to(old_size - new_size, new_layout.align().max(MIN_ALIGN));
 
-        if unsafe { self.is_last_allocation(ptr) }
+        if self.is_last_allocation(ptr)
                 // Only reclaim the excess space (which requires a copy) if it is worth it:
                 // we are actually going to recover "enough" space and we can do a non-overlapping copy.
                 //
@@ -519,7 +522,7 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
 
         let align_is_compatible = old_layout.align() >= new_layout.align();
 
-        if align_is_compatible && unsafe { self.is_last_allocation(ptr) } {
+        if align_is_compatible && self.is_last_allocation(ptr) {
             // Try to allocate the delta size within this same block so we can reuse the currently allocated space
             let delta = new_size - old_size;
             if let Some(new_ptr) =
@@ -547,8 +550,9 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
         Ok(new_ptr)
     }
 
+    /// Returns `true` if the given pointer is the last allocation made in this arena.
     #[inline]
-    unsafe fn is_last_allocation(&self, ptr: NonNull<u8>) -> bool {
+    fn is_last_allocation(&self, ptr: NonNull<u8>) -> bool {
         self.cursor_ptr.get() == ptr
     }
 }

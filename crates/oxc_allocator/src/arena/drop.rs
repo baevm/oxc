@@ -2,7 +2,7 @@
 
 use std::{alloc, ptr::NonNull};
 
-use super::{Arena, ChunkFooter, EMPTY_CHUNK, utils::is_pointer_aligned_to};
+use super::{Arena, ChunkFooter, EMPTY_CHUNK_FOOTER, utils::is_pointer_aligned_to};
 
 impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
     /// Reset this arena.
@@ -53,8 +53,10 @@ impl<const MIN_ALIGN: usize> Arena<MIN_ALIGN> {
             let current_footer_ptr = self.current_chunk_footer_ptr.get();
 
             // Deallocate all chunks except the current one
-            let prev_footer_ptr =
-                current_footer_ptr.as_ref().previous_chunk_footer_ptr.replace(EMPTY_CHUNK.get());
+            let prev_footer_ptr = current_footer_ptr
+                .as_ref()
+                .previous_chunk_footer_ptr
+                .replace(EMPTY_CHUNK_FOOTER.get());
             dealloc_chunk_list(prev_footer_ptr);
 
             // Reset the bump cursor to the end of the chunk.

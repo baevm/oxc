@@ -536,10 +536,7 @@ pub fn is_react_hook(expr: &Expression) -> bool {
         Expression::StaticMemberExpression(static_expr) => {
             let is_valid_property = is_react_hook_name(&static_expr.property.name);
             let is_valid_namespace = match &static_expr.object {
-                Expression::Identifier(ident) => {
-                    // TODO: test PascalCase
-                    ident.name.chars().next().is_some_and(char::is_uppercase)
-                }
+                Expression::Identifier(ident) => is_react_component_name(&ident.name),
                 _ => false,
             };
             is_valid_namespace && is_valid_property

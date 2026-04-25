@@ -1,7 +1,6 @@
+use std::{alloc::Layout, cmp, mem};
+
 use oxc_allocator::arena::Arena;
-use std::alloc::Layout;
-use std::cmp;
-use std::mem;
 
 #[test]
 fn alloc_slice_fill_zero() {

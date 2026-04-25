@@ -5,9 +5,7 @@
 
 use std::alloc::Layout;
 
-use super::{
-    Arena, ChunkFooter, DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER, bumpalo_alloc::Alloc as BumpaloAlloc,
-};
+use super::{Arena, DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER, bumpalo_alloc::Alloc as BumpaloAlloc};
 
 /// This function tests that `Arena` isn't `Sync`.
 /// ```compile_fail
@@ -19,20 +17,6 @@ use super::{
 /// ```
 #[cfg(doctest)]
 fn arena_not_sync() {}
-
-// Uses private type `ChunkFooter`
-#[cfg(target_pointer_width = "64")]
-#[test]
-fn chunk_footer_is_six_words_on_64_bit() {
-    assert_eq!(size_of::<ChunkFooter>(), size_of::<usize>() * 6);
-}
-
-// Uses private type `ChunkFooter`
-#[cfg(target_pointer_width = "32")]
-#[test]
-fn chunk_footer_is_eight_words_on_32_bit() {
-    assert_eq!(size_of::<ChunkFooter>(), size_of::<usize>() * 8);
-}
 
 // Uses private `DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER`
 #[test]
@@ -75,14 +59,14 @@ fn test_realloc() {
         let layout = Layout::from_size_align(10, 1).unwrap();
         let p = b.alloc_layout(layout);
         let q = (&b).realloc(p, layout, 11).unwrap();
-        assert_eq!(q.as_ptr() as usize, p.as_ptr() as usize - 1);
+        assert_eq!(q.as_ptr().addr(), p.as_ptr().addr() - 1);
         b.reset();
 
         // `realloc` will allocate a new chunk when growing the last allocation, if need be
         let layout = Layout::from_size_align(1, 1).unwrap();
         let p = b.alloc_layout(layout);
         let q = (&b).realloc(p, layout, CAPACITY + 1).unwrap();
-        assert_ne!(q.as_ptr() as usize, p.as_ptr() as usize - CAPACITY);
+        assert_ne!(q.as_ptr().addr(), p.as_ptr().addr() - CAPACITY);
         b.reset();
 
         // `realloc` will allocate and copy when reallocating anything that wasn't the last allocation
@@ -90,7 +74,7 @@ fn test_realloc() {
         let p = b.alloc_layout(layout);
         let _ = b.alloc_layout(layout);
         let q = (&b).realloc(p, layout, 2).unwrap();
-        assert!(q.as_ptr() as usize != p.as_ptr() as usize - 1);
+        assert!(q.as_ptr().addr() != p.as_ptr().addr() - 1);
         b.reset();
     }
 }

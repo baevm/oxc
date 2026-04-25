@@ -1,7 +1,10 @@
-use crate::quickcheck;
-use ::quickcheck::{Arbitrary, Gen};
-use oxc_allocator::arena::Arena;
 use std::mem;
+
+use ::quickcheck::{Arbitrary, Gen};
+
+use oxc_allocator::arena::Arena;
+
+use crate::quickcheck;
 
 #[derive(Clone, Debug, PartialEq)]
 struct BigValue {
