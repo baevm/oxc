@@ -1,5 +1,9 @@
 use std::borrow::Cow;
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize, de};
+use serde_json::Value;
+
 use oxc_ast::{
     AstKind,
     ast::{
@@ -11,9 +15,6 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::Span;
 use oxc_syntax::{identifier::is_identifier_name, keyword::is_reserved_keyword};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize, de};
-use serde_json::Value;
 
 use crate::{
     AstNode,
