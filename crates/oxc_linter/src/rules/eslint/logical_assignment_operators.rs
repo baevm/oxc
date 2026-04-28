@@ -238,7 +238,7 @@ fn check_assignment(assignment: &AssignmentExpression, ctx: &LintContext) {
     let operator = logical_assignment_operator_name(logical.operator);
     ctx.diagnostic(logical_assignment_operators_diagnostic(
         &LogicalAssignmentOperatorsDiagnosticKind::Assignment,
-        &operator,
+        operator,
         assignment.span,
     ));
 }
@@ -258,7 +258,7 @@ fn check_logical(logical: &LogicalExpression, ctx: &LintContext) {
     let operator = logical_assignment_operator_name(logical.operator);
     ctx.diagnostic(logical_assignment_operators_diagnostic(
         &LogicalAssignmentOperatorsDiagnosticKind::Logical,
-        &operator,
+        operator,
         logical.span,
     ));
 }
@@ -298,13 +298,17 @@ fn check_if_statement(if_statement: &IfStatement, ctx: &LintContext) {
     let operator = logical_assignment_operator_name(existence.operator);
     ctx.diagnostic(logical_assignment_operators_diagnostic(
         &LogicalAssignmentOperatorsDiagnosticKind::If,
-        &operator,
+        operator,
         if_statement.span,
     ));
 }
 
-fn logical_assignment_operator_name(operator: LogicalOperator) -> String {
-    format!("{}=", operator.as_str())
+fn logical_assignment_operator_name(operator: LogicalOperator) -> &'static str {
+    match operator {
+        LogicalOperator::Or => "||=",
+        LogicalOperator::And => "&&=",
+        LogicalOperator::Coalesce => "??=",
+    }
 }
 
 fn get_leftmost_operand<'a>(logical: &'a LogicalExpression<'a>) -> &'a Expression<'a> {
