@@ -199,18 +199,16 @@ impl Rule for LogicalAssignmentOperators {
                 LogicalAssignmentOperatorsMode::Never => check_never(assignment, ctx),
                 LogicalAssignmentOperatorsMode::Always => check_assignment(assignment, ctx),
             },
-            AstKind::LogicalExpression(logical) => {
-                if self.0 == LogicalAssignmentOperatorsMode::Always {
+            AstKind::LogicalExpression(logical)
+                if self.0 == LogicalAssignmentOperatorsMode::Always => {
                     check_logical(logical, ctx);
                 }
-            }
-            AstKind::IfStatement(if_statement) => {
+            AstKind::IfStatement(if_statement)
                 if self.0 == LogicalAssignmentOperatorsMode::Always
                     && self.1.enforce_for_if_statements
-                {
+                => {
                     check_if_statement(if_statement, ctx);
                 }
-            }
             _ => {}
         }
     }
