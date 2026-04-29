@@ -365,7 +365,11 @@ impl RuleRunner for crate::rules::eslint::init_declarations::InitDeclarations {
 }
 
 impl RuleRunner for crate::rules::eslint::logical_assignment_operators::LogicalAssignmentOperators {
-    const NODE_TYPES: Option<&AstTypesBitset> = None;
+    const NODE_TYPES: Option<&AstTypesBitset> = Some(&AstTypesBitset::from_types(&[
+        AstType::AssignmentExpression,
+        AstType::IfStatement,
+        AstType::LogicalExpression,
+    ]));
     const RUN_FUNCTIONS: RuleRunFunctionsImplemented = RuleRunFunctionsImplemented::Run;
 }
 

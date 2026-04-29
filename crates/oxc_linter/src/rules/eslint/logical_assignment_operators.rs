@@ -24,9 +24,10 @@ use crate::{
 
 fn logical_assignment_operators_diagnostic(
     kind: &LogicalAssignmentOperatorsDiagnosticKind,
-    operator: &str,
+    operator: LogicalOperator,
     span: Span,
 ) -> OxcDiagnostic {
+    let operator = operator.to_assignment_operator().as_str();
     let message = match kind {
         LogicalAssignmentOperatorsDiagnosticKind::Assignment => {
             format!("Assignment (=) can be replaced with operator assignment ({operator}).")
@@ -62,6 +63,8 @@ enum LogicalAssignmentOperatorsMode {
     /// For example, `a = a || b` can be shortened to `a ||= b`.
     /// Expressions with associativity such as `a = a || b || c` are reported as being able to be shortened to `a ||= b || c` unless the evaluation order is explicitly defined using parentheses, such as `a = (a || b) || c`.
     Always,
+    /// This option disallows logical assignment operator shorthand.
+    /// For example, `a ||= b` should be written as `a = a || b`.
     Never,
 }
 
@@ -191,32 +194,36 @@ impl Rule for LogicalAssignmentOperators {
     }
 
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
-        match self.0 {
-            LogicalAssignmentOperatorsMode::Never => {
-                if let AstKind::AssignmentExpression(assignment) = node.kind() {
-                    check_never(assignment, ctx);
+        match node.kind() {
+            AstKind::AssignmentExpression(assignment) => match self.0 {
+                LogicalAssignmentOperatorsMode::Never => check_never(assignment, ctx),
+                LogicalAssignmentOperatorsMode::Always => check_assignment(assignment, ctx),
+            },
+            AstKind::LogicalExpression(logical) => {
+                if self.0 == LogicalAssignmentOperatorsMode::Always {
+                    check_logical(logical, ctx);
                 }
             }
-            LogicalAssignmentOperatorsMode::Always => match node.kind() {
-                AstKind::AssignmentExpression(assignment) => check_assignment(assignment, ctx),
-                AstKind::LogicalExpression(logical) => check_logical(logical, ctx),
-                AstKind::IfStatement(if_statement) if self.1.enforce_for_if_statements => {
+            AstKind::IfStatement(if_statement) => {
+                if self.0 == LogicalAssignmentOperatorsMode::Always
+                    && self.1.enforce_for_if_statements
+                {
                     check_if_statement(if_statement, ctx);
                 }
-                _ => {}
-            },
+            }
+            _ => {}
         }
     }
 }
 
 fn check_never(assignment: &AssignmentExpression, ctx: &LintContext) {
-    if !assignment.operator.is_logical() {
+    let Some(operator) = assignment.operator.to_logical_operator() else {
         return;
-    }
+    };
 
     ctx.diagnostic(logical_assignment_operators_diagnostic(
         &LogicalAssignmentOperatorsDiagnosticKind::Unexpected,
-        assignment.operator.as_str(),
+        operator,
         assignment.span,
     ));
 }
@@ -235,10 +242,9 @@ fn check_assignment(assignment: &AssignmentExpression, ctx: &LintContext) {
         return;
     }
 
-    let operator = logical_assignment_operator_name(logical.operator);
     ctx.diagnostic(logical_assignment_operators_diagnostic(
         &LogicalAssignmentOperatorsDiagnosticKind::Assignment,
-        operator,
+        logical.operator,
         assignment.span,
     ));
 }
@@ -255,10 +261,9 @@ fn check_logical(logical: &LogicalExpression, ctx: &LintContext) {
         return;
     }
 
-    let operator = logical_assignment_operator_name(logical.operator);
     ctx.diagnostic(logical_assignment_operators_diagnostic(
         &LogicalAssignmentOperatorsDiagnosticKind::Logical,
-        operator,
+        logical.operator,
         logical.span,
     ));
 }
@@ -295,20 +300,11 @@ fn check_if_statement(if_statement: &IfStatement, ctx: &LintContext) {
         return;
     }
 
-    let operator = logical_assignment_operator_name(existence.operator);
     ctx.diagnostic(logical_assignment_operators_diagnostic(
         &LogicalAssignmentOperatorsDiagnosticKind::If,
-        operator,
+        existence.operator,
         if_statement.span,
     ));
-}
-
-fn logical_assignment_operator_name(operator: LogicalOperator) -> &'static str {
-    match operator {
-        LogicalOperator::Or => "||=",
-        LogicalOperator::And => "&&=",
-        LogicalOperator::Coalesce => "??=",
-    }
 }
 
 fn get_leftmost_operand<'a>(logical: &'a LogicalExpression<'a>) -> &'a Expression<'a> {
