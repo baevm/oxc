@@ -75,16 +75,21 @@ pub struct NoNoninteractiveElementInteractions(Box<NoNoninteractiveElementIntera
 impl Default for NoNoninteractiveElementInteractions {
     fn default() -> Self {
         Self(Box::new(NoNoninteractiveElementInteractionsConfig {
-            handlers: Some(compact_handlers(RECOMMENDED_HANDLERS)),
+            handlers: get_default_handlers(),
             handler_exceptions: recommended_handler_exceptions(),
         }))
     }
+}
+
+fn get_default_handlers() -> Option<Vec<CompactStr>> {
+    Some(compact_handlers(RECOMMENDED_HANDLERS))
 }
 
 #[derive(Debug, Default, Clone, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct NoNoninteractiveElementInteractionsConfig {
     /// An array of event handler names that should trigger this rule.
+    #[serde(default = "get_default_handlers")]
     handlers: Option<Vec<CompactStr>>,
     /// A mapping of HTML element names to handler names that should be ignored for that element.
     #[serde(flatten)]
