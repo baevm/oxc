@@ -2555,6 +2555,9 @@ expression: json
         "vitest/prefer-todo": {
           "$ref": "#/definitions/DummyRule"
         },
+        "vitest/prefer-vi-mocked": {
+          "$ref": "#/definitions/DummyRule"
+        },
         "vitest/require-awaited-expect-poll": {
           "$ref": "#/definitions/DummyRule"
         },

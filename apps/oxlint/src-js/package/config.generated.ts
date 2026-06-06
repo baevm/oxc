@@ -1290,6 +1290,7 @@ export interface DummyRuleMap {
   "vitest/prefer-to-have-been-called-times"?: DummyRule;
   "vitest/prefer-to-have-length"?: DummyRule;
   "vitest/prefer-todo"?: DummyRule;
+  "vitest/prefer-vi-mocked"?: DummyRule;
   "vitest/require-awaited-expect-poll"?: DummyRule;
   "vitest/require-hook"?: DummyRule;
   "vitest/require-local-test-context-for-concurrent-snapshots"?: DummyRule;
