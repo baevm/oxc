@@ -7612,7 +7612,7 @@ expression: json
           "$ref": "#/definitions/RuleNoConfig"
         },
         "vitest/prefer-vi-mocked": {
-          "$ref": "#/definitions/DummyRule"
+          "$ref": "#/definitions/RuleNoConfig"
         },
         "vitest/require-awaited-expect-poll": {
           "$ref": "#/definitions/RuleNoConfig"
