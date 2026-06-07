@@ -261,11 +261,6 @@ pub fn unexpected_super_reference(span: Span) -> OxcDiagnostic {
 }
 
 #[cold]
-pub fn assignment_is_not_simple(span: Span) -> OxcDiagnostic {
-    OxcDiagnostic::error("Invalid left-hand side in assignment").with_label(span)
-}
-
-#[cold]
 pub fn delete_of_unqualified(span: Span) -> OxcDiagnostic {
     OxcDiagnostic::error("Delete of an unqualified identifier in strict mode.").with_label(span)
 }
@@ -339,12 +334,6 @@ pub fn enum_member_must_have_initializer(span: Span) -> OxcDiagnostic {
     OxcDiagnostic::error("Enum member must have initializer.").with_label(span)
 }
 
-/// TS(1392)
-#[cold]
-pub fn import_alias_cannot_use_import_type(span: Span) -> OxcDiagnostic {
-    ts_error("1392", "An import alias cannot use 'import type'").with_label(span)
-}
-
 /// 'infer' declarations are only permitted in the 'extends' clause of a conditional type. (1338)
 #[cold]
 pub fn infer_declaration_only_permitted_in_extends_clause(span: Span) -> OxcDiagnostic {
@@ -376,22 +365,6 @@ pub fn function_implementation_missing(span: Span) -> OxcDiagnostic {
         "Function implementation is missing or not immediately following the declaration.",
     )
     .with_label(span)
-}
-
-#[cold]
-pub fn reserved_type_name(span: Span, reserved_name: &str, syntax_name: &str) -> OxcDiagnostic {
-    let code = match syntax_name {
-        "Type parameter" => "2368",
-        "Class" => "2414",
-        "Interface" => "2427",
-        "Enum" => "2431",
-        "Type alias" => "2457",
-        _ => {
-            debug_assert!(false, "all syntax_name should have a corresponding match arm");
-            "2414"
-        }
-    };
-    ts_error(code, format!("{syntax_name} name cannot be '{reserved_name}'")).with_label(span)
 }
 
 /// 'abstract' modifier can only appear on a class, method, or property declaration. (1242)
@@ -436,13 +409,6 @@ pub fn type_annotation_in_for_left(span: Span, is_for_in: bool) -> OxcDiagnostic
             "The left-hand side of a '{for_of_or_in}' statement cannot use a type annotation.",
         ),
     ).with_label(span).with_help("This iterator's type will be inferred from the iterable. You can safely remove the type annotation.")
-}
-
-#[cold]
-pub fn jsx_expressions_may_not_use_the_comma_operator(span: Span) -> OxcDiagnostic {
-    ts_error("18007", "JSX expressions may not use the comma operator")
-        .with_help("Did you mean to write an array?")
-        .with_label(span)
 }
 
 #[cold]

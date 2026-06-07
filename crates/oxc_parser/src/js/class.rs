@@ -81,6 +81,13 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         } else {
             None
         };
+        // A class name may not be a reserved type name, but only in TypeScript
+        // (`class string {}` is valid JavaScript).
+        if self.is_ts
+            && let Some(id) = &id
+        {
+            self.check_reserved_type_name(id, "Class");
+        }
 
         let type_parameters = if self.is_ts { self.parse_ts_type_parameters() } else { None };
         let (extends, implements) = self.parse_heritage_clause();
@@ -683,6 +690,9 @@ impl<'a, C: Config> ParserImpl<'a, C> {
             if r#static && name == "prototype" && !self.ctx.has_ambient() {
                 self.error(diagnostics::static_prototype(span));
             }
+        }
+        if r#abstract && name.is_private_identifier() {
+            self.error(diagnostics::abstract_with_private_identifier(name.span()));
         }
         if r#abstract && initializer.is_some() {
             let (name, span) = name.prop_name().unwrap_or_else(|| {

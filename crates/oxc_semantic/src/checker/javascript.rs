@@ -9,7 +9,7 @@ use oxc_str::Ident;
 use oxc_syntax::{
     class::ClassId,
     number::NumberBase,
-    operator::{AssignmentOperator, UnaryOperator},
+    operator::UnaryOperator,
     scope::{ScopeFlags, ScopeId},
     symbol::{SymbolFlags, SymbolId},
 };
@@ -734,10 +734,14 @@ fn check_redeclared_function(
             // (A clash with a `var`/`let`/`class` of the same name is a separate rule, reported elsewhere.)
             // This branch is only reached for function redeclarations in a sloppy-mode block,
             // which are extremely rare, so the linear scan's high cost does not really matter.
+            // Annex B.3.3 is JavaScript-only; TypeScript allows these (overloads/merging).
+            if ctx.source_type.is_typescript() {
+                return;
+            }
             let previous_declarations = &redeclarations[..redeclarations.len() - 1];
             let Some(culprit) = previous_declarations
                 .iter()
-                .find(|decl| ctx.async_or_generator_function_node_ids.contains(&decl.declaration))
+                .find(|decl| decl.flags.contains(SymbolFlags::AsyncOrGeneratorFunction))
             else {
                 // No `async`/generator function among the previous declarations - allowed by B.3.3.
                 return;
@@ -1234,20 +1238,6 @@ fn get_class_details(
     let class = ctx.nodes.kind(node_id).as_class().unwrap();
     let scope_id = class.scope_id();
     (Some(scope_id), class_id)
-}
-
-pub fn check_assignment_expression(assign_expr: &AssignmentExpression, ctx: &SemanticBuilder<'_>) {
-    // AssignmentExpression :
-    //     LeftHandSideExpression AssignmentOperator AssignmentExpression
-    //     LeftHandSideExpression &&= AssignmentExpression
-    //     LeftHandSideExpression ||= AssignmentExpression
-    //     LeftHandSideExpression ??= AssignmentExpression
-    // It is a Syntax Error if AssignmentTargetType of LeftHandSideExpression is not SIMPLE.
-    if assign_expr.operator != AssignmentOperator::Assign
-        && !assign_expr.left.is_simple_assignment_target()
-    {
-        ctx.error(diagnostics::assignment_is_not_simple(assign_expr.left.span()));
-    }
 }
 
 pub fn check_object_expression(obj_expr: &ObjectExpression, ctx: &SemanticBuilder<'_>) {

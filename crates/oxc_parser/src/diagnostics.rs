@@ -483,6 +483,11 @@ pub fn invalid_assignment(span: Span) -> OxcDiagnostic {
 }
 
 #[cold]
+pub fn assignment_is_not_simple(span: Span) -> OxcDiagnostic {
+    OxcDiagnostic::error("Invalid left-hand side in assignment").with_label(span)
+}
+
+#[cold]
 pub fn invalid_lhs_assignment(span: Span) -> OxcDiagnostic {
     OxcDiagnostic::error(
         "The left-hand side of an assignment expression must be a variable or a property access.",
@@ -1196,6 +1201,37 @@ pub fn abstract_property_cannot_have_initializer(name: &str, span: Span) -> OxcD
         format!("Property '{name}' cannot have an initializer because it is marked abstract."),
     )
     .with_label(span)
+}
+
+#[cold]
+pub fn abstract_with_private_identifier(span: Span) -> OxcDiagnostic {
+    ts_error("18019", "'abstract' modifier cannot be used with a private identifier.")
+        .with_label(span)
+}
+
+#[cold]
+pub fn jsx_expressions_may_not_use_the_comma_operator(span: Span) -> OxcDiagnostic {
+    ts_error("18007", "JSX expressions may not use the comma operator")
+        .with_help("Did you mean to write an array?")
+        .with_label(span)
+}
+
+#[cold]
+pub fn import_alias_cannot_use_import_type(span: Span) -> OxcDiagnostic {
+    ts_error("1392", "An import alias cannot use 'import type'").with_label(span)
+}
+
+#[cold]
+pub fn reserved_type_name(span: Span, reserved_name: &str, syntax_name: &str) -> OxcDiagnostic {
+    let code = match syntax_name {
+        "Type parameter" => "2368",
+        "Interface" => "2427",
+        "Enum" => "2431",
+        "Type alias" => "2457",
+        // "Class" and any other declaration form
+        _ => "2414",
+    };
+    ts_error(code, format!("{syntax_name} name cannot be '{reserved_name}'")).with_label(span)
 }
 
 #[cold]
