@@ -46,8 +46,14 @@ struct NoWarningCommentsConfig {
 #[serde(deny_unknown_fields)]
 #[expect(unused)] // only for schema generation
 struct NoWarningCommentsConfigJson {
+    /// An array of terms to match. The matching is case-insensitive.
     terms: Option<Vec<String>>,
+    /// Where to check for the terms:
+    /// - `"start"` (default): Terms must appear at the start of the comment (after any decoration)
+    /// - `"anywhere"`: Terms can appear anywhere in the comment
     location: Option<Location>,
+    /// An array of characters to ignore at the start of comments when `location` is `"start"`.
+    /// Useful for ignoring common comment decorations like `*` in JSDoc-style comments.
     decoration: Option<Vec<String>>,
 }
 
@@ -104,33 +110,6 @@ declare_oxc_lint!(
     /// // Note: This explains something
     /// const x = 1;
     /// ```
-    ///
-    /// ### Options
-    ///
-    /// This rule has an options object with the following defaults:
-    ///
-    /// ```json
-    /// {
-    ///   "terms": ["todo", "fixme", "xxx"],
-    ///   "location": "start",
-    ///   "decoration": []
-    /// }
-    /// ```
-    ///
-    /// #### `terms`
-    ///
-    /// An array of terms to match. The matching is case-insensitive.
-    ///
-    /// #### `location`
-    ///
-    /// Where to check for the terms:
-    /// - `"start"` (default): Terms must appear at the start of the comment (after any decoration)
-    /// - `"anywhere"`: Terms can appear anywhere in the comment
-    ///
-    /// #### `decoration`
-    ///
-    /// An array of characters to ignore at the start of comments when `location` is `"start"`.
-    /// Useful for ignoring common comment decorations like `*` in JSDoc-style comments.
     NoWarningComments,
     eslint,
     pedantic,

@@ -3795,8 +3795,20 @@ export interface NoVoid {
   allowAsStatement?: boolean;
 }
 export interface NoWarningCommentsConfigJson {
+  /**
+   * An array of characters to ignore at the start of comments when `location` is `"start"`.
+   * Useful for ignoring common comment decorations like `*` in JSDoc-style comments.
+   */
   decoration?: string[];
+  /**
+   * Where to check for the terms:
+   * - `"start"` (default): Terms must appear at the start of the comment (after any decoration)
+   * - `"anywhere"`: Terms can appear anywhere in the comment
+   */
   location?: Location;
+  /**
+   * An array of terms to match. The matching is case-insensitive.
+   */
   terms?: string[];
 }
 export interface NoProcessEnvConfig {

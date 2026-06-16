@@ -15339,19 +15339,29 @@
       "type": "object",
       "properties": {
         "decoration": {
+          "description": "An array of characters to ignore at the start of comments when `location` is `\"start\"`.\nUseful for ignoring common comment decorations like `*` in JSDoc-style comments.",
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "markdownDescription": "An array of characters to ignore at the start of comments when `location` is `\"start\"`.\nUseful for ignoring common comment decorations like `*` in JSDoc-style comments."
         },
         "location": {
-          "$ref": "#/definitions/Location"
+          "description": "Where to check for the terms:\n- `\"start\"` (default): Terms must appear at the start of the comment (after any decoration)\n- `\"anywhere\"`: Terms can appear anywhere in the comment",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Location"
+            }
+          ],
+          "markdownDescription": "Where to check for the terms:\n- `\"start\"` (default): Terms must appear at the start of the comment (after any decoration)\n- `\"anywhere\"`: Terms can appear anywhere in the comment"
         },
         "terms": {
+          "description": "An array of terms to match. The matching is case-insensitive.",
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "markdownDescription": "An array of terms to match. The matching is case-insensitive."
         }
       },
       "additionalProperties": false
