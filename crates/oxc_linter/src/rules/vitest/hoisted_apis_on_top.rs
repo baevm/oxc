@@ -14,10 +14,14 @@ use crate::{
     },
 };
 
-fn hoisted_apis_on_top_diagnostic(span: Span) -> OxcDiagnostic {
-    // TODO: Only mention the doMock alternative if the API in question is `vi.mock()`.
+fn hoisted_apis_on_top_diagnostic(span: Span, is_mock: bool) -> OxcDiagnostic {
+    let help = if is_mock {
+        "Move this hoisted API to the top of the file to better reflect its behavior.\nYou may alternatively replace `vi.mock()` with `vi.doMock`, which is not hoisted."
+    } else {
+        "Move this hoisted API to the top of the file to better reflect its behavior."
+    };
     OxcDiagnostic::warn("Hoisted API cannot be used in a runtime location in this file.")
-        .with_help("Move this hoisted API to the top of the file to better reflect its behavior.\nYou may alternatively replace `vi.mock()` with `vi.doMock`, which is not hoisted.")
+        .with_help(help)
         .with_label(span)
 }
 
@@ -43,23 +47,24 @@ declare_oxc_lint!(
     ///
     /// ### Examples
     ///
-    /// <!-- TODO: Add comments to these example code snippets explaining what their problems are. -->
-    ///
     /// Examples of **incorrect** code for this rule:
     /// ```js
     /// if (condition) {
+    ///   // Vitest registers the mock before the condition is evaluated.
     ///   vi.mock('some-module', () => {})
     /// }
     /// ```
     ///
     /// ```js
     /// if (condition) {
-    ///   vi.unmock('some-module', () => {})
+    ///   // Vitest removes the mock before the condition is evaluated.
+    ///   vi.unmock('some-module')
     /// }
     /// ```
     ///
     /// ```js
     /// if (condition) {
+    ///   // Vitest runs this callback before the condition is evaluated.
     ///   vi.hoisted(() => {})
     /// }
     /// ```
@@ -67,6 +72,7 @@ declare_oxc_lint!(
     /// ```js
     /// describe('suite', () => {
     ///   it('test', async () => {
+    ///     // Vitest registers the mock before this test runs, so it can affect other tests in the file.
     ///     vi.mock('some-module', () => {})
     ///
     ///     const sm = await import('some-module')
@@ -89,7 +95,7 @@ declare_oxc_lint!(
     /// ```
     ///
     /// ```js
-    /// vi.unmock('some-module', () => {})
+    /// vi.unmock('some-module')
     /// if (condition) {}
     /// ```
     ///
@@ -217,17 +223,16 @@ impl HoistedApisOnTop {
             rule_fixes.with_message("Moving hoisted methods to the top of the file")
         };
 
-        let suggestion_do_mock = {
-            if member_name == "mock" {
-                let mock_member = vitest_fn.members.first().unwrap();
-                fixer.replace(mock_member.span, "doMock")
-            } else {
-                fixer.noop()
-            }
+        let is_mock = member_name == "mock";
+        let suggestion_do_mock = if is_mock {
+            let mock_member = vitest_fn.members.first().unwrap();
+            fixer.replace(mock_member.span, "doMock")
+        } else {
+            fixer.noop()
         };
 
         ctx.diagnostic_with_suggestions(
-            hoisted_apis_on_top_diagnostic(call_expr.span),
+            hoisted_apis_on_top_diagnostic(call_expr.span, is_mock),
             [suggestion_move_node, suggestion_do_mock],
         );
     }
